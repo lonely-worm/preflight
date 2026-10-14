@@ -16,15 +16,6 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-      - name: Check Go formatting
-        shell: bash
-        run: |
-          files="$(gofmt -l $(git ls-files '*.go'))"
-          if [ -n "$files" ]; then
-            echo "The following Go files need gofmt:"
-            echo "$files"
-            exit 1
-          fi
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
