@@ -101,7 +101,7 @@ func Scan(root string, opts Options) ([]Finding, error) {
 		if fi.Size() > maxSize || fi.Size() == 0 {
 			return nil
 		}
-		fileFindings, err := scanFile(root, path)
+		fileFindings, err := scanFile(root, path, maxSize)
 		if err != nil {
 			return nil
 		} // unreadable/binary files are skipped, not fatal to the whole scan
@@ -127,7 +127,7 @@ func Scan(root string, opts Options) ([]Finding, error) {
 	return findings, nil
 }
 
-func scanFile(root, path string) ([]Finding, error) {
+func scanFile(root, path string, maxFileSize int64) ([]Finding, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -137,8 +137,13 @@ func scanFile(root, path string) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
+	maxInt := int64(int(^uint(0) >> 1))
+	maxTokenSize := maxInt
+	if maxFileSize < maxInt {
+		maxTokenSize = maxFileSize
+	}
 	s := bufio.NewScanner(f)
-	s.Buffer(make([]byte, 4096), int(defaultMaxFileSize))
+	s.Buffer(make([]byte, 4096), int(maxTokenSize))
 	var out []Finding
 	lineNo := 0
 	for s.Scan() {
