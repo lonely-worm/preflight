@@ -16,13 +16,22 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+      - name: Check Go formatting
+        shell: bash
+        run: |
+          files="$(gofmt -l $(git ls-files '*.go'))"
+          if [ -n "$files" ]; then
+            echo "The following Go files need gofmt:"
+            echo "$files"
+            exit 1
+          fi
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.22.x'
           cache: true
       - name: Run unit tests
-        run: go test -v ./...
+        run: go test -race -v ./...
       - name: Run go vet
         run: go vet ./...
       - name: Build CLI
