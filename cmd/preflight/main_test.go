@@ -61,3 +61,24 @@ func TestRunRejectsUnsupportedFormat(t *testing.T) {
 		t.Fatalf("expected exit 2 for invalid format, got %d", code)
 	}
 }
+
+func TestRunWritesSARIFWithoutLeakingSecret(t *testing.T) {
+	root := t.TempDir()
+	secretValue := "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234"
+	if err := os.WriteFile(filepath.Join(root, "sample.env"), []byte("GITHUB_TOKEN="+secretValue+"\\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	code, output := captureStdout(t, func() int { return run([]string{"-format", "sarif", root}) })
+	if code != 1 {
+		t.Fatalf("expected exit 1 when findings exist, got %d; output: %s", code, output)
+	}
+	if !strings.Contains(output, "\"version\": \"2.1.0\"") {
+		t.Fatalf("expected SARIF 2.1.0 output: %s", output)
+	}
+	if !strings.Contains(output, "\"ruleId\": \"github-token\"") {
+		t.Fatalf("expected github-token rule in SARIF: %s", output)
+	}
+	if strings.Contains(output, secretValue) {
+		t.Fatal("SARIF output leaked the matched secret")
+	}
+}
