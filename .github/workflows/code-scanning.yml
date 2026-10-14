@@ -43,6 +43,7 @@ jobs:
           echo "SARIF report generated. Exit $scan_status means findings may have been detected."
 
       - name: Upload SARIF to GitHub Code Scanning
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: preflight.sarif
