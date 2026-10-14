@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strings"
 
@@ -164,7 +165,7 @@ func writeSARIF(w io.Writer, findings []secret.Finding) error {
 	for _, finding := range findings {
 		if _, ok := rulesByID[finding.RuleID]; !ok {
 			rulesByID[finding.RuleID] = sarifRule{
-				ID: finding.RuleID,
+				ID:               finding.RuleID,
 				ShortDescription: sarifMessage{Text: finding.Message},
 			}
 		}
@@ -175,14 +176,16 @@ func writeSARIF(w io.Writer, findings []secret.Finding) error {
 		case "low", "info", "informational":
 			level = "note"
 		}
+		// SARIF artifact locations are URIs, so escape characters such as spaces.
+		artifactURI := (&url.URL{Path: finding.Path}).EscapedPath()
 		results = append(results, sarifResult{
-			RuleID: finding.RuleID,
-			Level: level,
+			RuleID:  finding.RuleID,
+			Level:   level,
 			Message: sarifMessage{Text: finding.Message},
 			Locations: []sarifLocation{{
 				PhysicalLocation: sarifPhysicalLocation{
-					ArtifactLocation: sarifArtifactLocation{URI: finding.Path},
-					Region: sarifRegion{StartLine: finding.Line, StartColumn: finding.Column},
+					ArtifactLocation: sarifArtifactLocation{URI: artifactURI},
+					Region:           sarifRegion{StartLine: finding.Line, StartColumn: finding.Column},
 				},
 			}},
 		})
@@ -196,12 +199,12 @@ func writeSARIF(w io.Writer, findings []secret.Finding) error {
 	}
 	log := sarifLog{
 		Version: "2.1.0",
-		Schema: "https://json.schemastore.org/sarif-2.1.0.json",
+		Schema:  "https://json.schemastore.org/sarif-2.1.0.json",
 		Runs: []sarifRun{{
 			Tool: sarifTool{Driver: sarifDriver{
-				Name: "Preflight",
+				Name:           "Preflight",
 				InformationURI: "https://github.com/lonely-worm/preflight",
-				Rules: rules,
+				Rules:          rules,
 			}},
 			Results: results,
 		}},
