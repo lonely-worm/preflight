@@ -10,7 +10,8 @@ import (
 func TestScanFindsLikelySecretsWithoutLeakingValues(t *testing.T) {
 	root := t.TempDir()
 	secret := "ghp_" + strings.Repeat("a", 50)
-	content := "GITHUB_TOKEN=" + secret + "\nAWS_ACCESS_KEY_ID=AKIA1234567890ABCDEF\n"
+	awsKey := "AKIA" + strings.Repeat("A", 16)
+	content := "GITHUB_TOKEN=" + secret + "\nAWS_ACCESS_KEY_ID=" + awsKey + "\n"
 	if err := os.WriteFile(filepath.Join(root, "config.env"), []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
