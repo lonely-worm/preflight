@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -34,6 +35,25 @@ func TestRunCleanDirectory(t *testing.T) {
 	}
 	if !strings.Contains(output, "no matching secret patterns") {
 		t.Fatalf("unexpected output: %s", output)
+	}
+}
+
+func TestRunJSONCleanDirectoryReturnsEmptyArray(t *testing.T) {
+	root := t.TempDir()
+	code, output := captureStdout(t, func() int { return run([]string{"-format", "json", root}) })
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; output: %s", code, output)
+	}
+
+	var findings []map[string]any
+	if err := json.Unmarshal([]byte(output), &findings); err != nil {
+		t.Fatalf("expected valid JSON array, got %q: %v", output, err)
+	}
+	if findings == nil {
+		t.Fatal("expected an empty array, got null")
+	}
+	if len(findings) != 0 {
+		t.Fatalf("expected no findings, got %d", len(findings))
 	}
 }
 
