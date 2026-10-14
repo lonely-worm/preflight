@@ -38,7 +38,7 @@ jobs:
         run: |
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
-          printf '%s\n' 'GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234' > "$tmp/sample.env"
+          printf 'GITHUB_TOKEN=%s%s\n' 'ghp_abcdefghijklmnopqrstuvwxyz' 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1234' > "$tmp/sample.env"
           set +e
           output="$(./preflight -format json "$tmp" 2>&1)"
           status=$?
