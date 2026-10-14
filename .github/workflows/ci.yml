@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   test:
-    name: Test and vet
+    name: Test, vet, build, and smoke test
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -25,3 +25,27 @@ jobs:
         run: go test -v ./...
       - name: Run go vet
         run: go vet ./...
+      - name: Build CLI
+        run: go build -o ./preflight ./cmd/preflight
+      - name: Smoke test clean directory
+        shell: bash
+        run: |
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          ./preflight "$tmp"
+      - name: Smoke test detection and redaction
+        shell: bash
+        run: |
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          printf '%s\n' 'GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234' > "$tmp/sample.env"
+          set +e
+          output="$(./preflight -format json "$tmp" 2>&1)"
+          status=$?
+          set -e
+          test "$status" -eq 1
+          echo "$output" | grep -q 'github-token'
+          if echo "$output" | grep -q 'ghp_abcdefghijklmnopqrstuvwxyz'; then
+            echo "Smoke test failed: secret value leaked into output"
+            exit 1
+          fi
