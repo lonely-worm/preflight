@@ -31,6 +31,29 @@ func TestScanFindsLikelySecretsWithoutLeakingValues(t *testing.T) {
 	}
 }
 
+func TestScanSupportsConfiguredFileSizeForLongLines(t *testing.T) {
+	root := t.TempDir()
+	secret := "ghp_" + strings.Repeat("a", 50)
+	content := strings.Repeat("x", (2<<20)+1) + " " + secret + "\n"
+	if err := os.WriteFile(filepath.Join(root, "large-line.txt"), []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	findings, err := Scan(root, Options{MaxFileSize: 3 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, finding := range findings {
+		if finding.RuleID == "github-token" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected token on a line larger than the default scanner buffer to be detected")
+	}
+}
+
 func TestScanSkipsGitAndNodeModules(t *testing.T) {
 	root := t.TempDir()
 	for _, dir := range []string{".git", "node_modules"} {
