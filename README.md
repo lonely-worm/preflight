@@ -12,7 +12,7 @@ Preflight helps developers identify common security risks before code ships. It 
 - [x] Stable finding order
 - [x] Unit tests for scanner and CLI behavior
 - [x] CLI integration (text and JSON output)
-- [ ] SARIF reporter
+- [x] SARIF 2.1.0 reporter (local output; GitHub Code Scanning upload workflow not configured yet)
 - [x] GitHub Actions CI workflow (runs unit tests and go vet on push and pull request)
 - [ ] Baseline and configurable policy support
 
