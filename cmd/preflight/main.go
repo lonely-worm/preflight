@@ -68,6 +68,11 @@ func run(args []string) int {
 		return 2
 	}
 
+	// Keep machine-readable output consistent: an empty scan is an empty array, not null.
+	if findings == nil {
+		findings = []secret.Finding{}
+	}
+
 	if *format == "sarif" {
 		if err := writeSARIF(os.Stdout, findings); err != nil {
 			fmt.Fprintf(os.Stderr, "preflight: encode SARIF: %v\n", err)
