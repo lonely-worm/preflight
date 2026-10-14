@@ -134,9 +134,9 @@ type sarifMessage struct {
 }
 
 type sarifResult struct {
-	RuleID    string         `json:"ruleId"`
-	Level     string         `json:"level"`
-	Message   sarifMessage   `json:"message"`
+	RuleID    string          `json:"ruleId"`
+	Level     string          `json:"level"`
+	Message   sarifMessage    `json:"message"`
 	Locations []sarifLocation `json:"locations"`
 }
 
