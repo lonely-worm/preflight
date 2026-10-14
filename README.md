@@ -13,7 +13,7 @@ Preflight helps developers identify common security risks before code ships. Thi
 - [x] Unit tests for detection, ignored directories, and invalid scan roots
 - [ ] CLI integration
 - [ ] SARIF reporter
-- [ ] GitHub Actions CI workflow
+- [x] GitHub Actions CI workflow (runs unit tests and go vet on push and pull request)
 - [ ] Baseline and configurable policy support
 
 ## Quick start
