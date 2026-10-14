@@ -13,8 +13,8 @@ Preflight helps developers identify common security risks before code ships. It 
 - [x] Unit tests for scanner and CLI behavior
 - [x] CLI integration (text and JSON output)
 - [x] SARIF 2.1.0 reporter
-- [x] GitHub Actions workflow configured to upload SARIF to GitHub Code Scanning (first upload must be verified in Actions)
-- [x] GitHub Actions CI workflow (runs unit tests and go vet on push and pull request)
+- [x] GitHub Actions workflow configured to upload SARIF to GitHub Code Scanning
+- [x] GitHub Actions CI workflow (unit tests, go vet, build, and smoke tests)
 - [ ] Baseline and configurable policy support
 
 ## Quick start
@@ -23,38 +23,44 @@ Requires Go 1.22 or newer.
 
 Run tests and static checks:
 
-```powershell
+```sh
 go test ./...
 go vet ./...
 ```
 
 Scan the current directory:
 
-```powershell
+```sh
 go run ./cmd/preflight .
 ```
 
 Output machine-readable JSON:
 
-```powershell
+```sh
 go run ./cmd/preflight -format json .
+```
+
+Output SARIF for GitHub Code Scanning:
+
+```sh
+go run ./cmd/preflight -format sarif . > preflight.sarif
 ```
 
 Include hidden files and directories:
 
-```powershell
+```sh
 go run ./cmd/preflight -include-hidden .
 ```
 
 Exclude a directory by name (repeat the flag to add more):
 
-```powershell
+```sh
 go run ./cmd/preflight -exclude-dir testdata -exclude-dir fixtures .
 ```
 
 Set a custom file-size limit in bytes:
 
-```powershell
+```sh
 go run ./cmd/preflight -max-file-size 1048576 .
 ```
 
@@ -70,13 +76,12 @@ Preflight is a first-pass detector, not a guarantee that a repository contains n
 
 If a real credential is found in source control, revoke or rotate it; deleting the line alone does not remove it from Git history.
 
-## Project roadmap
+## Roadmap
 
-1. Add SARIF output and GitHub Code Scanning integration.
-2. Add baseline support and configurable severity policy.
-3. Improve rules, test fixtures, false-positive handling, and benchmarks.
-4. Publish versioned cross-platform releases.
+1. Add baseline support and configurable severity policy.
+2. Improve rules, test fixtures, false-positive handling, and benchmarks.
+3. Publish versioned cross-platform releases.
 
 ## License
 
-License selection is pending. Do not assume reuse terms until a license file is added.
+No license file is present yet. Until a license is selected and added, do not assume the repository is licensed for reuse.
