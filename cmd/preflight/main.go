@@ -70,7 +70,7 @@ func run(args []string) int {
 
 	if *format == "sarif" {
 		if err := writeSARIF(os.Stdout, findings); err != nil {
-			fmt.Fprintf(os.Stderr, "preflight: encode SARIF: %v\\n", err)
+			fmt.Fprintf(os.Stderr, "preflight: encode SARIF: %v\n", err)
 			return 2
 		}
 	} else if *format == "json" {
@@ -105,7 +105,7 @@ type sarifLog struct {
 }
 
 type sarifRun struct {
-	Tool    sarifTool    `json:"tool"`
+	Tool    sarifTool     `json:"tool"`
 	Results []sarifResult `json:"results"`
 }
 
@@ -120,8 +120,8 @@ type sarifDriver struct {
 }
 
 type sarifRule struct {
-	ID               string            `json:"id"`
-	ShortDescription sarifMessage      `json:"shortDescription"`
+	ID               string       `json:"id"`
+	ShortDescription sarifMessage `json:"shortDescription"`
 }
 
 type sarifMessage struct {
@@ -129,9 +129,9 @@ type sarifMessage struct {
 }
 
 type sarifResult struct {
-	RuleID    string        `json:"ruleId"`
-	Level     string        `json:"level"`
-	Message   sarifMessage  `json:"message"`
+	RuleID    string         `json:"ruleId"`
+	Level     string         `json:"level"`
+	Message   sarifMessage   `json:"message"`
 	Locations []sarifLocation `json:"locations"`
 }
 
