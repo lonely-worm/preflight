@@ -39,7 +39,7 @@ func TestRunCleanDirectory(t *testing.T) {
 
 func TestRunReportsFindingWithoutLeakingSecret(t *testing.T) {
 	root := t.TempDir()
-	secretValue := "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234"
+	secretValue := "ghp_" + strings.Repeat("a", 50)
 	if err := os.WriteFile(filepath.Join(root, "sample.env"), []byte("GITHUB_TOKEN="+secretValue+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -64,8 +64,8 @@ func TestRunRejectsUnsupportedFormat(t *testing.T) {
 
 func TestRunWritesSARIFWithoutLeakingSecret(t *testing.T) {
 	root := t.TempDir()
-	secretValue := "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234"
-	if err := os.WriteFile(filepath.Join(root, "sample.env"), []byte("GITHUB_TOKEN="+secretValue+"\\n"), 0600); err != nil {
+	secretValue := "ghp_" + strings.Repeat("a", 50)
+	if err := os.WriteFile(filepath.Join(root, "sample.env"), []byte("GITHUB_TOKEN="+secretValue+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	code, output := captureStdout(t, func() int { return run([]string{"-format", "sarif", root}) })
