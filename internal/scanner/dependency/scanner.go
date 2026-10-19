@@ -114,8 +114,17 @@ func parseJSON(reader io.Reader) ([]secret.Finding, error) {
 		messageCount++
 		switch {
 		case e.Config != nil:
+			if configSeen {
+				return nil, fmt.Errorf("govulncheck JSON stream contains multiple config events")
+			}
+			if e.Config.ProtocolVersion != "v1.0.0" {
+				return nil, fmt.Errorf("unsupported govulncheck JSON protocol version %q (expected v1.0.0)", e.Config.ProtocolVersion)
+			}
 			configSeen = true
 		case e.OSV != nil:
+			if e.OSV.ID == "" {
+				return nil, fmt.Errorf("govulncheck OSV event is missing its ID")
+			}
 			vulnerabilities[e.OSV.ID] = vulnerabilityInfo{ID: e.OSV.ID, Summary: e.OSV.Summary}
 		case e.Finding != nil:
 			vulnerabilityEvents = append(vulnerabilityEvents, *e.Finding)
@@ -132,7 +141,10 @@ func parseJSON(reader io.Reader) ([]secret.Finding, error) {
 		if finding.OSV == "" {
 			return nil, fmt.Errorf("govulncheck finding is missing its OSV ID")
 		}
-		info := vulnerabilities[finding.OSV]
+		info, foundOSV := vulnerabilities[finding.OSV]
+		if !foundOSV {
+			return nil, fmt.Errorf("govulncheck finding references unknown OSV ID %q", finding.OSV)
+		}
 
 		var vulnerableSymbolFrame traceFrame
 		var entryPoint traceFrame
