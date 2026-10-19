@@ -121,3 +121,37 @@ func TestScanWithReportHonorsExclusionsAndSizeLimit(t *testing.T) {
 		t.Fatalf("expected one size-limit diagnostic, got %#v", report.SkippedPaths)
 	}
 }
+
+func TestScanFindsKubernetesRisksInArbitraryManifestFilename(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "payments-service.yaml")
+	body := `apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: payments
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          securityContext:
+            privileged: true
+            runAsUser: 0
+`
+	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	findings, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for _, finding := range findings {
+		found[finding.RuleID] = true
+	}
+	for _, id := range []string{"kubernetes-privileged", "kubernetes-root-user"} {
+		if !found[id] {
+			t.Errorf("expected %s for an arbitrary Kubernetes manifest filename; got %#v", id, findings)
+		}
+	}
+}
