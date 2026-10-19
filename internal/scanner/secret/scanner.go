@@ -61,7 +61,7 @@ type rule struct {
 var rules = []rule{
 	{"aws-access-key-id", "high", "Possible AWS access key ID", regexp.MustCompile(`\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`)},
 	{"aws-secret-access-key", "critical", "Possible AWS secret access key assignment", regexp.MustCompile(`(?i)\baws_secret_access_key\b\s*[:=]\s*["']?([A-Za-z0-9/+=]{20,128})`)},
-	{"aws-session-token", "critical", "Possible AWS session token assignment", regexp.MustCompile(`(?i)\baws_session_token\b\s*[:=]\s*["']?([A-Za-z0-9_./+=-]{32,8192})`)},
+	{"aws-session-token", "critical", "Possible AWS session token assignment", regexp.MustCompile(`(?i)\baws_session_token\b\s*[:=]\s*["']?([A-Za-z0-9_./+=-]{32,})`)},
 	{"github-token", "critical", "Possible GitHub access token", regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{30,255}\b`)},
 	{"github-fine-grained-token", "critical", "Possible GitHub fine-grained personal access token", regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{20,255}\b`)},
 	{"google-api-key", "high", "Possible Google API key", regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35}\b`)},
