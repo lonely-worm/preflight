@@ -40,7 +40,12 @@ type osvEvent struct {
 	Summary string `json:"summary"`
 }
 
+type configEvent struct {
+	ProtocolVersion string `json:"protocol_version"`
+}
+
 type event struct {
+	Config  *configEvent  `json:"config,omitempty"`
 	OSV     *osvEvent     `json:"osv,omitempty"`
 	Finding *findingEvent `json:"finding,omitempty"`
 }
@@ -86,6 +91,8 @@ func parseJSON(reader io.Reader) ([]secret.Finding, error) {
 	decoder := json.NewDecoder(reader)
 	vulnerabilities := make(map[string]vulnerabilityInfo)
 	var vulnerabilityEvents []findingEvent
+	configSeen := false
+	messageCount := 0
 
 	for {
 		var e event
@@ -95,12 +102,19 @@ func parseJSON(reader io.Reader) ([]secret.Finding, error) {
 			}
 			return nil, err
 		}
+		messageCount++
 		switch {
+		case e.Config != nil:
+			configSeen = true
 		case e.OSV != nil:
 			vulnerabilities[e.OSV.ID] = vulnerabilityInfo{ID: e.OSV.ID, Summary: e.OSV.Summary}
 		case e.Finding != nil:
 			vulnerabilityEvents = append(vulnerabilityEvents, *e.Finding)
 		}
+	}
+
+	if messageCount == 0 || !configSeen {
+		return nil, fmt.Errorf("govulncheck JSON stream is empty or missing its config event")
 	}
 
 	findings := make([]secret.Finding, 0, len(vulnerabilityEvents))
