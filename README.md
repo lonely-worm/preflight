@@ -2,7 +2,7 @@
 
 **A developer-focused, read-only security scanner written in Go.**
 
-Preflight scans a local project directory for common hard-coded credential patterns and reports findings without printing the matched secret value. It is designed as a lightweight first line of defense—not a replacement for secret-management controls or a full security audit.
+Preflight scans a local project directory for common hard-coded credential patterns and risky configuration settings without printing matched secret values. It is an early-stage, defense-in-depth tool—not a replacement for a mature secret scanner, dependency audit, or full security review.
 
 [![Go CI](https://github.com/lonely-worm/preflight/actions/workflows/ci.yml/badge.svg)](https://github.com/lonely-worm/preflight/actions/workflows/ci.yml)
 [![Code Scanning](https://github.com/lonely-worm/preflight/actions/workflows/code-scanning.yml/badge.svg)](https://github.com/lonely-worm/preflight/actions/workflows/code-scanning.yml)
@@ -11,7 +11,7 @@ Preflight scans a local project directory for common hard-coded credential patte
 
 ## Features
 
-- Read-only recursive filesystem scanning; no credential validation or network requests.
+- Read-only recursive scanning. The default secret and configuration checks do not make network requests or validate credentials.
 - Detection patterns for AWS access key IDs, GitHub classic and fine-grained tokens, Google API keys, Slack tokens, Stripe live secret keys, npm tokens, private-key headers, and generic credential assignments.
 - Redacted findings with rule ID, severity, relative file path, line, and column.
 - Text, JSON, and SARIF 2.1.0 output.
@@ -25,7 +25,7 @@ Preflight scans a local project directory for common hard-coded credential patte
 
 ## Quick start
 
-Requires Go 1.22 or newer.
+Requires Go 1.22 or newer to build from source. Prebuilt binaries will be linked from GitHub Releases once the first version tag is published.
 
 Clone and enter the repository:
 
@@ -51,7 +51,7 @@ Choose the asset matching your operating system and CPU architecture. On Linux o
 
 Releases are generated from semantic-version tags such as `v1.2.3`. The workflow runs tests, cross-compiles all six targets, and attaches the binaries plus SHA-256 checksums to the GitHub Release.
 
-Run tests and static checks:
+Run tests and static checks (CI tests the minimum Go version and the current supported Go toolchain):
 
 ```sh
 go test ./...
@@ -100,6 +100,8 @@ go run ./cmd/preflight -deps .
 | Rule ID | What it looks for | Default severity |
 | --- | --- | --- |
 | `aws-access-key-id` | AWS access key ID-shaped strings | High |
+| `aws-secret-access-key` | AWS secret access key assignments | Critical |
+| `aws-session-token` | AWS session token assignments | Critical |
 | `github-token` | GitHub classic token-shaped strings | Critical |
 | `github-fine-grained-token` | GitHub fine-grained personal access token-shaped strings | Critical |
 | `google-api-key` | Google API key-shaped strings | High |
@@ -113,7 +115,7 @@ These are pattern-based heuristics. A match is a **potential finding**, not proo
 
 ## Dependency and configuration scanning
 
-The default scan checks common risky settings in Dockerfiles, Compose files, Terraform files, Kubernetes manifests, and GitHub Actions workflows. Findings include a rule ID, severity, source location, and concrete remediation guidance.
+The default scan checks common risky settings in Dockerfiles, Compose files, Terraform files, Kubernetes manifests, and GitHub Actions workflows. Findings include a rule ID, severity, source location, and concrete remediation guidance. Configuration checks always inspect supported files under `.github/workflows/` even when `-include-hidden` is not set; explicit `-exclude-dir` entries and `-max-file-size` apply to both scan stages.
 
 ```sh
 # Scan secrets and security-sensitive configuration
@@ -124,7 +126,7 @@ go install golang.org/x/vuln/cmd/govulncheck@latest
 go run ./cmd/preflight -deps .
 ```
 
-The dependency scan requires `govulncheck` on `PATH` and network access to the Go vulnerability database. It reports known vulnerabilities found by govulncheck's code-aware analysis, including reachable vulnerable symbols and a fixed version when available. If the tool is missing or the scan fails, Preflight marks the overall report incomplete instead of presenting a clean result. See the [official Go vulnerability management documentation](https://go.dev/doc/security/vuln/).
+The dependency scan requires `govulncheck` on `PATH` and network access to the Go vulnerability database. It reports known vulnerabilities found by govulncheck's code-aware analysis, including the reachable call site and a fixed version when available. A failed or invalid JSON stream makes the overall report incomplete; partial findings are never treated as a successful scan. govulncheck sends module paths associated with known vulnerabilities to the database, not project source code; see the [official overview](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) and [Go vulnerability management documentation](https://go.dev/doc/security/vuln/).
 
 Configuration rules currently include:
 - Docker containers explicitly configured to run as root, privileged Compose services, and host networking.
@@ -171,7 +173,7 @@ The baseline stores a fingerprint plus rule ID, relative path, line, and column�
 
 CI regression tests also verify that incomplete JSON and SARIF runs fail closed.
 
-Every output format reports scan completeness. Text output lists skipped paths and reasons; JSON returns an object containing `findings`, `scanned_files`, `skipped_paths`, and `complete`. SARIF 2.1.0 separates concise rule summaries from remediation guidance, maps severity to SARIF levels, and marks incomplete execution as unsuccessful with warning notifications.
+Every output format reports scan completeness. Text output lists skipped paths and reasons; JSON returns an object containing `findings`, `scanned_files`, `configuration_files_scanned`, `skipped_paths`, `suppressed_findings`, and `complete`. Baselines are not written if any required scan stage is incomplete. SARIF 2.1.0 separates concise rule summaries from remediation guidance, maps severity to SARIF levels, and marks incomplete execution as unsuccessful with warning notifications.
 
 The Code Scanning workflow validates the SARIF JSON, uploads the report to GitHub Code Scanning for eligible runs, and preserves `preflight.sarif` as a workflow artifact for 14 days. Uploads from fork pull requests are skipped because those runs do not have permission to publish code-scanning results.
 
@@ -181,11 +183,17 @@ The Code Scanning workflow validates the SARIF JSON, uploads the report to GitHu
 
 Preflight reports intentional scope exclusions such as hidden paths, default-ignored directories, and `-exclude-dir` entries. These are disclosed in `skipped_paths` but do not by themselves mark the scan incomplete. Files that could not be inspected due to read errors, binary content, or the size limit do mark it incomplete.
 
+## Security reporting
+
+Please do not include live credentials in public issues. See [SECURITY.md](SECURITY.md) for responsible vulnerability disclosure instructions and current support expectations.
+
 ## Safety and limitations
 
-- Preflight does not modify scanned files or send their contents to a remote service.
+- Preflight does not modify scanned files. Default secret and configuration scans are local; optional `-deps` runs govulncheck, which queries the Go vulnerability database using vulnerability-related module metadata.
 - Matched secret values are not included in text, JSON, or SARIF findings.
 - False positives and missed detections are possible. Encoded, split, dynamically generated, or unsupported credentials may not be detected.
+- Preflight scans the working tree, not Git history. A secret removed from the current files may still exist in previous commits; use a dedicated history scanner and rotate any exposed credential.
+- No license file has been chosen yet. Do not assume permission to redistribute, modify, or incorporate this repository until its owner adds a license.
 - Unreadable, binary, and oversized files are reported explicitly and make the scan incomplete; an empty findings list does not override that status.
 - Only scan directories you own or are authorized to inspect.
 - If a real credential was committed, revoke or rotate it. Removing the current line alone does not remove it from Git history.

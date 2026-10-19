@@ -27,7 +27,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.22.x'
+          go-version: '1.27.x'
           cache: true
           cache-dependency-path: go.mod
 
@@ -72,6 +72,11 @@ jobs:
           set -euo pipefail
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          elif [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            gh release create "$GITHUB_REF_NAME" dist/* \
+              --title "Preflight $GITHUB_REF_NAME" \
+              --prerelease \
+              --generate-notes
           else
             gh release create "$GITHUB_REF_NAME" dist/* \
               --title "Preflight $GITHUB_REF_NAME" \

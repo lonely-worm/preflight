@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lonely-worm/preflight/internal/scanner/secret"
 )
 
 func captureStdout(t *testing.T, fn func() int) (int, string) {
@@ -33,7 +35,7 @@ func TestRunCleanDirectory(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d; output: %s", code, output)
 	}
-	if !strings.Contains(output, "no matching secret patterns") {
+	if !strings.Contains(output, "no matching secret or configuration patterns") {
 		t.Fatalf("unexpected output: %s", output)
 	}
 }
@@ -270,4 +272,59 @@ func containsString(values []string, target string) bool {
 		if value == target { return true }
 	}
 	return false
+}
+
+
+func TestWriteBaselineRefusesIncompleteScan(t *testing.T) {
+	root := t.TempDir()
+	largePath := filepath.Join(root, "large.txt")
+	if err := os.WriteFile(largePath, []byte(strings.Repeat("x", 128)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	baselinePath := filepath.Join(t.TempDir(), "baseline.json")
+
+	code, _ := captureStdout(t, func() int {
+		return run([]string{"-max-file-size", "64", "-write-baseline", baselinePath, root})
+	})
+	if code != 2 {
+		t.Fatalf("expected exit 2 when a baseline scan is incomplete, got %d", code)
+	}
+	if _, err := os.Stat(baselinePath); !os.IsNotExist(err) {
+		t.Fatalf("incomplete scan must not create a baseline; stat error: %v", err)
+	}
+}
+
+func TestConfigScanHonorsExcludeDir(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "infra", "main.tf")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("cidr_blocks = [\"0.0.0.0/0\"]\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	code, output := captureStdout(t, func() int {
+		return run([]string{"-format", "json", "-exclude-dir", "infra", root})
+	})
+	if code != 0 {
+		t.Fatalf("expected clean exit when risky file is explicitly excluded, got %d: %s", code, output)
+	}
+	var report struct {
+		Findings []secret.Finding `json:"findings"`
+		SkippedPaths []secret.ScanIssue `json:"skipped_paths"`
+		Complete bool `json:"complete"`
+	}
+	if err := json.Unmarshal([]byte(output), &report); err != nil {
+		t.Fatalf("expected valid JSON output: %v", err)
+	}
+	if !report.Complete || len(report.Findings) != 0 {
+		t.Fatalf("unexpected report with excluded configuration directory: %#v", report)
+	}
+}
+
+func TestRunHelpReturnsSuccess(t *testing.T) {
+	if code := run([]string{"-h"}); code != 0 {
+		t.Fatalf("expected help to exit successfully, got %d", code)
+	}
 }

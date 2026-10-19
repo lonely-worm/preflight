@@ -36,11 +36,12 @@ type ScanIssue struct {
 
 // Report describes findings and the scope actually inspected.
 type Report struct {
-	Findings    []Finding   `json:"findings"`
-	ScannedFiles int        `json:"scanned_files"`
-	SkippedPaths []ScanIssue `json:"skipped_paths"`
-	SuppressedFindings int `json:"suppressed_findings"`
-	Complete     bool        `json:"complete"`
+	Findings                 []Finding   `json:"findings"`
+	ScannedFiles             int         `json:"scanned_files"`
+	ConfigurationFilesScanned int        `json:"configuration_files_scanned"`
+	SkippedPaths             []ScanIssue `json:"skipped_paths"`
+	SuppressedFindings       int         `json:"suppressed_findings"`
+	Complete                 bool        `json:"complete"`
 }
 
 // Options controls a scan. MaxFileSize <= 0 uses the 2 MiB default.
@@ -58,14 +59,16 @@ type rule struct {
 }
 
 var rules = []rule{
-	{"aws-access-key-id", "high", "Possible AWS access key ID", regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`)},
+	{"aws-access-key-id", "high", "Possible AWS access key ID", regexp.MustCompile(`\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`)},
+	{"aws-secret-access-key", "critical", "Possible AWS secret access key assignment", regexp.MustCompile(`(?i)\baws_secret_access_key\b\s*[:=]\s*["']?([A-Za-z0-9/+=]{20,128})`)},
+	{"aws-session-token", "critical", "Possible AWS session token assignment", regexp.MustCompile(`(?i)\baws_session_token\b\s*[:=]\s*["']?([A-Za-z0-9_./+=-]{32,})`)},
 	{"github-token", "critical", "Possible GitHub access token", regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{30,255}\b`)},
 	{"github-fine-grained-token", "critical", "Possible GitHub fine-grained personal access token", regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{20,255}\b`)},
 	{"google-api-key", "high", "Possible Google API key", regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35}\b`)},
 	{"slack-token", "critical", "Possible Slack access token", regexp.MustCompile(`\bxox[baprs]-[0-9A-Za-z-]{10,}\b`)},
 	{"stripe-live-secret-key", "critical", "Possible Stripe live secret key", regexp.MustCompile(`\bsk_live_[0-9A-Za-z]{20,}\b`)},
 	{"npm-access-token", "high", "Possible npm access token", regexp.MustCompile(`\bnpm_[A-Za-z0-9]{36}\b`)},
-	{"private-key-header", "critical", "Private key material header found", regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----`)},
+	{"private-key-header", "critical", "Private key material header found", regexp.MustCompile(`-----BEGIN (?:(?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY|ENCRYPTED PRIVATE KEY)-----`)},
 	{"generic-secret-assignment", "medium", "Possible hard-coded credential assignment", regexp.MustCompile(`(?i)\b(?:api[_-]?key|client[_-]?secret|access[_-]?token|auth[_-]?token|password|passwd|secret[_-]?key)\b\s*[:=]\s*["']?([A-Za-z0-9_./+=-]{12,})`)},
 }
 
@@ -92,6 +95,11 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 	if !info.IsDir() {
 		return Report{}, errors.New("scan root must be a directory")
 	}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return Report{}, fmt.Errorf("resolve scan root: %w", err)
+	}
+	root = resolvedRoot
 	maxSize := opts.MaxFileSize
 	if maxSize <= 0 {
 		maxSize = defaultMaxFileSize
@@ -134,7 +142,7 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 				return filepath.SkipDir
 			}
 			if !opts.IncludeHidden && strings.HasPrefix(name, ".") {
-				addIssue(path, "hidden_directory", "use -include-hidden to scan hidden directories", false)
+				addIssue(path, "hidden_directory", "hidden paths are excluded from the secret-content scan; use -include-hidden to include them", false)
 				return filepath.SkipDir
 			}
 			return nil

@@ -41,3 +41,140 @@ func TestScanDoesNotFlagSafeWorkflowPermissions(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	if len(findings) != 0 { t.Fatalf("expected no findings for safe workflow, got %#v", findings) }
 }
+
+
+func TestScanFlagsMutableVersionTagsButAcceptsFullSHA(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ".github", "workflows", "deploy.yml")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	body := "jobs:\n  deploy:\n    steps:\n      - uses: actions/checkout@v4.1.2\n      - uses: actions/setup-go@0123456789abcdef0123456789abcdef01234567\n      - uses: ./.github/actions/local-action\n"
+	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	findings, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, finding := range findings {
+		if finding.RuleID == "github-actions-unpinned" {
+			count++
+			if finding.Line != 4 {
+				t.Errorf("expected mutable tag on line 4, got line %d", finding.Line)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly one unpinned action finding, got %#v", findings)
+	}
+}
+
+func TestScanDoesNotFlagCommentedTerraformIngress(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "infra", "main.tf")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("# cidr_blocks = [\"0.0.0.0/0\"]\n// cidr_blocks = [\"0.0.0.0/0\"]\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	findings, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("expected comments not to trigger a finding, got %#v", findings)
+	}
+}
+
+func TestScanWithReportHonorsExclusionsAndSizeLimit(t *testing.T) {
+	root := t.TempDir()
+	dockerPath := filepath.Join(root, "Dockerfile")
+	if err := os.WriteFile(dockerPath, []byte("FROM alpine\nUSER root\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	excludedPath := filepath.Join(root, "infra", "main.tf")
+	if err := os.MkdirAll(filepath.Dir(excludedPath), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(excludedPath, []byte("cidr_blocks = [\"0.0.0.0/0\"]\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	largePath := filepath.Join(root, "docker-compose.yml")
+	if err := os.WriteFile(largePath, []byte("services:\n  app:\n    privileged: true\n# "+strings.Repeat("x", 80)+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := ScanWithReport(root, Options{MaxFileSize: 64, ExcludeDirs: []string{"infra"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Complete {
+		t.Fatal("expected oversized configuration file to mark scan incomplete")
+	}
+	if len(report.Findings) != 1 || report.Findings[0].RuleID != "docker-user-root" {
+		t.Fatalf("expected Docker root finding only; got %#v", report.Findings)
+	}
+	if len(report.SkippedPaths) != 1 || report.SkippedPaths[0].Path != "docker-compose.yml" || report.SkippedPaths[0].Reason != "config_file_too_large" {
+		t.Fatalf("expected one size-limit diagnostic, got %#v", report.SkippedPaths)
+	}
+}
+
+func TestScanFindsKubernetesRisksInArbitraryManifestFilename(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "payments-service.yaml")
+	body := `apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: payments
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          securityContext:
+            privileged: true
+            runAsUser: 0
+`
+	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	findings, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for _, finding := range findings {
+		found[finding.RuleID] = true
+	}
+	for _, id := range []string{"kubernetes-privileged", "kubernetes-root-user"} {
+		if !found[id] {
+			t.Errorf("expected %s for an arbitrary Kubernetes manifest filename; got %#v", id, findings)
+		}
+	}
+}
+
+func TestScanWithReportFollowsSymlinkRoot(t *testing.T) {
+	parent := t.TempDir()
+	target := filepath.Join(parent, "project")
+	if err := os.MkdirAll(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "Dockerfile"), []byte("FROM alpine\nUSER root\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(parent, "project-link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks are unavailable on this platform: %v", err)
+	}
+
+	report, err := ScanWithReport(link, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Complete || len(report.Findings) != 1 || report.Findings[0].RuleID != "docker-user-root" {
+		t.Fatalf("expected symlink target config to be scanned, got %#v", report)
+	}
+}

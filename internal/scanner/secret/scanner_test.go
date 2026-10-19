@@ -94,6 +94,10 @@ func TestScanDetectsAdditionalCredentialFormats(t *testing.T) {
 		value string
 		rule  string
 	}{
+		{name: "aws_sts_access_key", value: "ASIA" + strings.Repeat("B", 16), rule: "aws-access-key-id"},
+		{name: "aws_secret_access_key", value: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLE", rule: "aws-secret-access-key"},
+		{name: "aws_session_token", value: "AQoDYXdzEJr..."+strings.Repeat("Z", 48), rule: "aws-session-token"},
+		{name: "encrypted_private_key", value: "-----BEGIN ENCRYPTED PRIVATE KEY-----", rule: "private-key-header"},
 		{name: "github_pat", value: "github_pat_" + strings.Repeat("A", 35), rule: "github-fine-grained-token"},
 		{name: "google_api_key", value: "AIza" + strings.Repeat("A", 35), rule: "google-api-key"},
 		{name: "slack_token", value: "xoxb-" + strings.Repeat("A", 20), rule: "slack-token"},
@@ -196,5 +200,29 @@ func TestScanWithReportMarksFullyScannedTreeComplete(t *testing.T) {
 	}
 	if report.ScannedFiles != 1 || len(report.SkippedPaths) != 0 {
 		t.Fatalf("unexpected scan accounting: %#v", report)
+	}
+}
+
+func TestScanFollowsSymlinkRoot(t *testing.T) {
+	parent := t.TempDir()
+	target := filepath.Join(parent, "project")
+	if err := os.MkdirAll(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	token := "ghp_" + strings.Repeat("a", 50)
+	if err := os.WriteFile(filepath.Join(target, "sample.env"), []byte("GITHUB_TOKEN="+token+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(parent, "project-link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks are unavailable on this platform: %v", err)
+	}
+
+	report, err := ScanWithReport(link, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Complete || report.ScannedFiles != 1 || len(report.Findings) != 1 {
+		t.Fatalf("expected symlink target to be scanned completely, got %#v", report)
 	}
 }
