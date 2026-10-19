@@ -80,7 +80,7 @@ func Scan(root string, opts Options) ([]Finding, error) {
 }
 
 // ScanWithReport recursively inspects regular text-like files under root. It is read-only.
-// Complete is false whenever any path is skipped or could not be fully inspected.
+// Complete is false when a path that should be inspected cannot be fully read.
 func ScanWithReport(root string, opts Options) (Report, error) {
 	info, err := os.Stat(root)
 	if err != nil {
@@ -107,7 +107,9 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 			path = filepath.ToSlash(path)
 		}
 		report.SkippedPaths = append(report.SkippedPaths, ScanIssue{Path: path, Reason: reason, Detail: detail})
-		report.Complete = false
+		if makesIncomplete {
+			report.Complete = false
+		}
 	}
 
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
