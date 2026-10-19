@@ -1,6 +1,6 @@
 # Preflight
 
-**A developer-focused, read-only secret scanner written in Go.**
+**A developer-focused, read-only security scanner written in Go.**
 
 Preflight scans a local project directory for common hard-coded credential patterns and reports findings without printing the matched secret value. It is designed as a lightweight first line of defense—not a replacement for secret-management controls or a full security audit.
 
