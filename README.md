@@ -20,7 +20,8 @@ Preflight scans a local project directory for common hard-coded credential patte
 - JSON rule configuration with per-rule enable/disable and severity overrides.
 - Baseline support for suppressing known findings without storing credential values.
 - Hidden-file control, directory exclusions, and configurable maximum file size.
-- Hardened GitHub Actions CI, SARIF uploads with downloadable reports, and tagged cross-platform releases.
+- GitHub Actions workflows with least-privilege permissions, full-SHA action pins, SARIF artifacts, and tagged cross-platform releases.
+- Weekly Dependabot checks for GitHub Actions and Go module updates.
 
 ## Quick start
 
