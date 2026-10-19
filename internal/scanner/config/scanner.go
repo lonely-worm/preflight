@@ -169,6 +169,11 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 	if !info.IsDir() {
 		return Report{}, fmt.Errorf("configuration scan root must be a directory")
 	}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return Report{}, fmt.Errorf("resolve configuration scan root: %w", err)
+	}
+	root = resolvedRoot
 
 	maxFileSize := opts.MaxFileSize
 	if maxFileSize <= 0 {
