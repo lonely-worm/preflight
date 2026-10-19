@@ -36,11 +36,12 @@ type ScanIssue struct {
 
 // Report describes findings and the scope actually inspected.
 type Report struct {
-	Findings    []Finding   `json:"findings"`
-	ScannedFiles int        `json:"scanned_files"`
-	SkippedPaths []ScanIssue `json:"skipped_paths"`
-	SuppressedFindings int `json:"suppressed_findings"`
-	Complete     bool        `json:"complete"`
+	Findings                 []Finding   `json:"findings"`
+	ScannedFiles             int         `json:"scanned_files"`
+	ConfigurationFilesScanned int        `json:"configuration_files_scanned"`
+	SkippedPaths             []ScanIssue `json:"skipped_paths"`
+	SuppressedFindings       int         `json:"suppressed_findings"`
+	Complete                 bool        `json:"complete"`
 }
 
 // Options controls a scan. MaxFileSize <= 0 uses the 2 MiB default.
