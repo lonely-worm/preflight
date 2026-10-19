@@ -94,6 +94,8 @@ func TestScanDetectsAdditionalCredentialFormats(t *testing.T) {
 		value string
 		rule  string
 	}{
+		{name: "aws_sts_access_key", value: "ASIA" + strings.Repeat("B", 16), rule: "aws-access-key-id"},
+		{name: "encrypted_private_key", value: "-----BEGIN ENCRYPTED PRIVATE KEY-----", rule: "private-key-header"},
 		{name: "github_pat", value: "github_pat_" + strings.Repeat("A", 35), rule: "github-fine-grained-token"},
 		{name: "google_api_key", value: "AIza" + strings.Repeat("A", 35), rule: "google-api-key"},
 		{name: "slack_token", value: "xoxb-" + strings.Repeat("A", 20), rule: "slack-token"},
