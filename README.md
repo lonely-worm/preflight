@@ -11,7 +11,7 @@ Preflight scans a local project directory for common hard-coded credential patte
 ## Features
 
 - Read-only recursive filesystem scanning; no credential validation or network requests.
-- Detection patterns for AWS access key IDs, GitHub access tokens, private-key headers, and generic credential assignments.
+- Detection patterns for AWS access key IDs, GitHub classic and fine-grained tokens, Google API keys, Slack tokens, Stripe live secret keys, npm tokens, private-key headers, and generic credential assignments.
 - Redacted findings with rule ID, severity, relative file path, line, and column.
 - Text, JSON, and SARIF 2.1.0 output.
 - Stable finding order for predictable output.
@@ -70,7 +70,12 @@ go run ./cmd/preflight -max-file-size 1048576 .
 | Rule ID | What it looks for | Default severity |
 | --- | --- | --- |
 | `aws-access-key-id` | AWS access key ID-shaped strings | High |
-| `github-token` | GitHub token-shaped strings | Critical |
+| `github-token` | GitHub classic token-shaped strings | Critical |
+| `github-fine-grained-token` | GitHub fine-grained personal access token-shaped strings | Critical |
+| `google-api-key` | Google API key-shaped strings | High |
+| `slack-token` | Slack access token-shaped strings | Critical |
+| `stripe-live-secret-key` | Stripe live secret key-shaped strings | Critical |
+| `npm-access-token` | npm access token-shaped strings | High |
 | `private-key-header` | Private-key PEM header markers | Critical |
 | `generic-secret-assignment` | Credential-like assignments such as `api_key`, `password`, or `client_secret` | Medium |
 
@@ -94,9 +99,9 @@ These are pattern-based heuristics. A match is a **potential finding**, not proo
 ## Roadmap
 
 1. Add baseline support and configurable severity policy.
-2. Expand test fixtures and regression coverage for detection edge cases.
-3. Add benchmarks and document detection trade-offs.
-4. Publish versioned cross-platform releases.
+2. Add baseline support and configurable severity policy.
+3. Add structured scan-scope diagnostics for unreadable or skipped files.
+4. Add benchmarks and publish versioned cross-platform releases.
 
 ## License
 
