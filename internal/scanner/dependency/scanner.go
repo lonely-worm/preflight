@@ -9,7 +9,6 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
