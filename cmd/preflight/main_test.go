@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lonely-worm/preflight/internal/scanner/secret"
 )
 
 func captureStdout(t *testing.T, fn func() int) (int, string) {
