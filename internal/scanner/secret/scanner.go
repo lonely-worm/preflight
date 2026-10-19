@@ -39,6 +39,7 @@ type Report struct {
 	Findings    []Finding   `json:"findings"`
 	ScannedFiles int        `json:"scanned_files"`
 	SkippedPaths []ScanIssue `json:"skipped_paths"`
+	SuppressedFindings int `json:"suppressed_findings"`
 	Complete     bool        `json:"complete"`
 }
 
@@ -47,6 +48,8 @@ type Options struct {
 	MaxFileSize   int64
 	IncludeHidden bool
 	ExcludeDirs   []string
+	RuleConfig Config
+	Baseline Baseline
 }
 
 type rule struct {
@@ -157,7 +160,7 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 			addIssue(path, "empty_file", "empty file contains no content to inspect", false)
 			return nil
 		}
-		fileFindings, err := scanFile(root, path, maxSize)
+		fileFindings, err := scanFile(root, path, maxSize, opts.RuleConfig)
 		if err != nil {
 			reason := "read_error"
 			if errors.Is(err, errBinaryFile) {
@@ -173,6 +176,19 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
+	baselineSet := make(map[string]struct{}, len(opts.Baseline.Findings))
+	for _, entry := range opts.Baseline.Findings {
+		baselineSet[entry.Fingerprint] = struct{}{}
+	}
+	active := report.Findings[:0]
+	for _, finding := range report.Findings {
+		if _, ok := baselineSet[Fingerprint(finding)]; ok {
+			report.SuppressedFindings++
+			continue
+		}
+		active = append(active, finding)
+	}
+	report.Findings = active
 	sort.Slice(report.Findings, func(i, j int) bool {
 		a, b := report.Findings[i], report.Findings[j]
 		if a.Path != b.Path {
@@ -197,7 +213,7 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 
 var errBinaryFile = errors.New("binary file")
 
-func scanFile(root, path string, maxFileSize int64) ([]Finding, error) {
+func scanFile(root, path string, maxFileSize int64, config Config) ([]Finding, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -223,8 +239,16 @@ func scanFile(root, path string, maxFileSize int64) ([]Finding, error) {
 			return nil, errBinaryFile
 		}
 		for _, r := range rules {
+			ruleConfig, configured := config.Rules[r.id]
+			if configured && ruleConfig.Enabled != nil && !*ruleConfig.Enabled {
+				continue
+			}
+			severity := r.severity
+			if configured && ruleConfig.Severity != "" {
+				severity = strings.ToLower(ruleConfig.Severity)
+			}
 			for _, loc := range r.pattern.FindAllStringIndex(line, -1) {
-				out = append(out, Finding{RuleID: r.id, Severity: r.severity, Path: filepath.ToSlash(rel), Line: lineNo, Column: loc[0] + 1, Message: r.message, Redacted: "[REDACTED]"})
+				out = append(out, Finding{RuleID: r.id, Severity: severity, Path: filepath.ToSlash(rel), Line: lineNo, Column: loc[0] + 1, Message: r.message, Redacted: "[REDACTED]"})
 			}
 		}
 	}
