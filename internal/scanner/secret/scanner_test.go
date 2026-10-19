@@ -105,7 +105,7 @@ func TestScanDetectsAdditionalCredentialFormats(t *testing.T) {
 		content.WriteString(fixture.name)
 		content.WriteString("=")
 		content.WriteString(fixture.value)
-		content.WriteString("\\n")
+		content.WriteString("\n")
 	}
 	if err := os.WriteFile(filepath.Join(root, "credentials.env"), []byte(content.String()), 0600); err != nil {
 		t.Fatal(err)
