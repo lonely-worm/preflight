@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   security-events: write
@@ -15,15 +19,19 @@ jobs:
   scan:
     name: Scan repository and upload SARIF
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: '1.22.x'
           cache: true
+          cache-dependency-path: go.mod
 
       - name: Run tests
         run: go test ./...
@@ -36,15 +44,26 @@ jobs:
           scan_status=$?
           set -e
           if [ "$scan_status" -gt 1 ]; then
-            echo "Preflight failed to generate a SARIF report (exit $scan_status)."
+            echo "Preflight failed to generate a complete SARIF report (exit $scan_status)."
             exit "$scan_status"
           fi
           test -s preflight.sarif
-          echo "SARIF report generated. Exit $scan_status means findings may have been detected."
+          python3 -m json.tool preflight.sarif > /dev/null
+          echo "SARIF 2.1.0 report generated; findings exit code was $scan_status."
+
+      - name: Upload SARIF artifact
+        if: always() && hashFiles('preflight.sarif') != ''
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: preflight-sarif-${{ github.run_id }}
+          path: preflight.sarif
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload SARIF to GitHub Code Scanning
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: github/codeql-action/upload-sarif@v3
+        if: success() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@c6f931105cb2c34c8f901cc885ba1e2e259cf745
         with:
           sarif_file: preflight.sarif
           category: preflight-secret-scanner
+          wait-for-processing: true
