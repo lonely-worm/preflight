@@ -15,6 +15,7 @@ Preflight scans a local project directory for common hard-coded credential patte
 - Redacted findings with rule ID, severity, relative file path, line, and column.
 - Text, JSON, and SARIF 2.1.0 output.
 - Stable finding order for predictable output.
+- Scan report includes inspected-file counts, skipped paths with reasons, and an explicit completeness status.
 - Hidden-file control, directory exclusions, and configurable maximum file size.
 - GitHub Actions workflows for tests/build checks and SARIF upload to GitHub Code Scanning.
 
@@ -81,18 +82,22 @@ go run ./cmd/preflight -max-file-size 1048576 .
 
 These are pattern-based heuristics. A match is a **potential finding**, not proof that a credential is valid or exploitable.
 
-## Exit codes
+## Scan completeness and exit codes
 
-- `0` — scan completed with no matching patterns.
-- `1` — one or more potential findings were detected.
-- `2` — invalid options or a scan/output error.
+Every output format reports scan completeness. Text output lists skipped paths and reasons; JSON returns an object containing `findings`, `scanned_files`, `skipped_paths`, and `complete`. SARIF marks incomplete execution as unsuccessful and includes a warning notification.
+
+- `0` — scan completed without findings; paths intentionally excluded by policy may still be listed.
+- `1` — scan completed and one or more potential findings were detected.
+- `2` — invalid options, a fatal scan/output error, or an incomplete scan (for example, an unreadable, binary, or oversized file). Review the report before treating the result as clean.
+
+Preflight reports intentional scope exclusions such as hidden paths, default-ignored directories, and `-exclude-dir` entries. These are disclosed in `skipped_paths` but do not by themselves mark the scan incomplete. Files that could not be inspected due to read errors, binary content, or the size limit do mark it incomplete.
 
 ## Safety and limitations
 
 - Preflight does not modify scanned files or send their contents to a remote service.
 - Matched secret values are not included in text, JSON, or SARIF findings.
 - False positives and missed detections are possible. Encoded, split, dynamically generated, or unsupported credentials may not be detected.
-- Some unreadable or binary files may be skipped; review scan scope when completeness matters.
+- Unreadable, binary, and oversized files are reported explicitly and make the scan incomplete; an empty findings list does not override that status.
 - Only scan directories you own or are authorized to inspect.
 - If a real credential was committed, revoke or rotate it. Removing the current line alone does not remove it from Git history.
 
@@ -100,8 +105,8 @@ These are pattern-based heuristics. A match is a **potential finding**, not proo
 
 1. Expand regression coverage for detection edge cases and false positives.
 2. Add baseline support and configurable severity policy.
-3. Add structured scan-scope diagnostics for unreadable or skipped files.
-4. Add benchmarks and publish versioned cross-platform releases.
+3. Add benchmarks and publish versioned cross-platform releases.
+
 
 ## License
 
