@@ -64,8 +64,12 @@ const govulncheckTimeout = 10 * time.Minute
 // vulnerability finding look like an execution failure. A timeout prevents a stuck subprocess
 // from holding a Preflight invocation open indefinitely.
 func Scan(root string) ([]secret.Finding, error) {
-	if _, err := filepath.Abs(root); err != nil {
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
 		return nil, err
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(rootAbs); resolveErr == nil {
+		rootAbs = resolved
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), govulncheckTimeout)
 	defer cancel()
@@ -92,7 +96,43 @@ func Scan(root string) ([]secret.Finding, error) {
 	if runErr != nil {
 		return nil, fmt.Errorf("govulncheck failed: %w: %s", runErr, strings.TrimSpace(stderr.String()))
 	}
-	return findings, nil
+	return normalizeFindingPaths(rootAbs, findings), nil
+}
+
+// normalizeFindingPaths keeps SARIF locations repository-relative and prevents absolute
+// developer or runner paths from leaking into JSON/SARIF reports. Out-of-root source paths
+// fall back to go.mod with an explicit note so the finding remains actionable.
+func normalizeFindingPaths(root string, findings []secret.Finding) []secret.Finding {
+	for i := range findings {
+		path := filepath.Clean(filepath.FromSlash(findings[i].Path))
+		if filepath.IsAbs(path) {
+			rel, err := filepath.Rel(root, path)
+			if err == nil && isInsideRoot(rel) {
+				findings[i].Path = filepath.ToSlash(rel)
+				continue
+			}
+			findings[i] = fallbackToModuleLocation(findings[i])
+			continue
+		}
+		if isInsideRoot(path) {
+			findings[i].Path = filepath.ToSlash(path)
+			continue
+		}
+		findings[i] = fallbackToModuleLocation(findings[i])
+	}
+	return findings
+}
+
+func isInsideRoot(path string) bool {
+	return path != ".." && !strings.HasPrefix(path, ".."+string(filepath.Separator)) && !filepath.IsAbs(path)
+}
+
+func fallbackToModuleLocation(finding secret.Finding) secret.Finding {
+	finding.Path = "go.mod"
+	finding.Line = 1
+	finding.Column = 1
+	finding.Message += ". Source location was outside the scanned project; review go.mod and rerun govulncheck locally."
+	return finding
 }
 
 // parseJSON buffers the event stream before mapping findings. govulncheck explicitly does not
