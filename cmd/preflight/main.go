@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lonely-worm/preflight/internal/scanner/secret"
+	"github.com/lonely-worm/preflight/internal/scanner/secret"\n\tconfigscanner "github.com/lonely-worm/preflight/internal/scanner/config"\n\tdepscanner "github.com/lonely-worm/preflight/internal/scanner/dependency"
 )
 
 type stringList []string
@@ -30,7 +30,7 @@ func run(args []string) int {
 	format := flags.String("format", "text", "output format: text, json, or sarif")
 	configPath := flags.String("config", "", "JSON rule configuration file")
 	baselinePath := flags.String("baseline", "", "JSON baseline file for known findings")
-	writeBaseline := flags.String("write-baseline", "", "write current findings to a baseline file and exit")
+	writeBaseline := flags.String("write-baseline", "", "write current findings to a baseline file and exit")\n\tcheckDependencies := flags.Bool("deps", false, "run govulncheck for Go dependency vulnerabilities (requires govulncheck installed)")\n\tcheckConfig := flags.Bool("config-scan", true, "scan common configuration files for risky security settings")
 	includeHidden := flags.Bool("include-hidden", false, "include hidden files and directories")
 	maxFileSize := flags.Int64("max-file-size", 2<<20, "maximum file size to scan in bytes")
 	var excluded stringList
@@ -82,6 +82,26 @@ func run(args []string) int {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "preflight: scan failed: %v\n", err)
 		return 2
+	}
+	if *checkConfig {
+		configFindings, scanErr := configscanner.Scan(root)
+		if scanErr != nil {
+			fmt.Fprintf(os.Stderr, "preflight: configuration scan incomplete: %v\\n", scanErr)
+			report.Complete = false
+			report.SkippedPaths = append(report.SkippedPaths, secret.ScanIssue{Path: root, Reason: "configuration_scan_error", Detail: scanErr.Error()})
+		} else {
+			report.Findings = append(report.Findings, applyPolicy(configFindings, config, baseline, &report.SuppressedFindings)...)
+		}
+	}
+	if *checkDependencies {
+		dependencyFindings, scanErr := depscanner.Scan(root)
+		if scanErr != nil {
+			fmt.Fprintf(os.Stderr, "preflight: dependency scan incomplete: %v\\n", scanErr)
+			report.Complete = false
+			report.SkippedPaths = append(report.SkippedPaths, secret.ScanIssue{Path: "go.mod", Reason: "dependency_scan_error", Detail: scanErr.Error()})
+		} else {
+			report.Findings = append(report.Findings, applyPolicy(dependencyFindings, config, baseline, &report.SuppressedFindings)...)
+		}
 	}
 	if *writeBaseline != "" {
 		if err := secret.WriteBaseline(*writeBaseline, report.Findings); err != nil {
@@ -282,4 +302,20 @@ func writeSARIF(w io.Writer, report secret.Report) error {
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(log)
+}
+
+
+func applyPolicy(findings []secret.Finding, config secret.Config, baseline secret.Baseline, suppressed *int) []secret.Finding {
+	baselineSet := make(map[string]bool, len(baseline.Findings))
+	for _, entry := range baseline.Findings { baselineSet[entry.Fingerprint] = true }
+	out := make([]secret.Finding, 0, len(findings))
+	for _, finding := range findings {
+		if cfg, ok := config.Rules[finding.RuleID]; ok {
+			if cfg.Enabled != nil && !*cfg.Enabled { continue }
+			if cfg.Severity != "" { finding.Severity = strings.ToLower(cfg.Severity) }
+		}
+		if baselineSet[secret.Fingerprint(finding)] { *suppressed++; continue }
+		out = append(out, finding)
+	}
+	return out
 }
