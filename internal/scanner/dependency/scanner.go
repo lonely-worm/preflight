@@ -77,7 +77,7 @@ func Scan(root string) ([]secret.Finding, error) {
 				message += ". Remediation: review the advisory and update to a supported patched release; no fixed version was reported by govulncheck."
 			}
 			message += fmt.Sprintf(" Reachable symbol: %s.%s", trace.Package, trace.Function)
-			findings = append(findings, secret.Finding{RuleID: "go-vulnerability-" + strings.ToLower(strings.ReplaceAll(id, "/", "-")), Severity: severity, Path: "go.mod", Line: 1, Column: 1, Message: message})
+			findings = append(findings, secret.Finding{RuleID: "go-vulnerability", Severity: severity, Path: "go.mod", Line: 1, Column: 1, Message: message})
 		}
 	}
 	if runErr != nil && len(findings) == 0 {
