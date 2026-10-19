@@ -228,13 +228,27 @@ func writeSARIF(w io.Writer, report secret.Report) error {
 		}
 	}
 	invocation := sarifInvocation{ExecutionSuccessful: report.Complete}
-	if !report.Complete {
-		invocation.ToolExecutionNotifications = []sarifNotification{{
+	for _, issue := range report.SkippedPaths {
+		level := "note"
+		switch issue.Reason {
+		case "walk_error", "stat_error", "file_too_large", "binary_file", "read_error":
+			level = "warning"
+		}
+		message := fmt.Sprintf("Skipped path %q (%s)", issue.Path, issue.Reason)
+		if issue.Detail != "" {
+			message += ": " + issue.Detail
+		}
+		invocation.ToolExecutionNotifications = append(invocation.ToolExecutionNotifications, sarifNotification{
+			Level: level, Message: sarifMessage{Text: message},
+		})
+	}
+	if !report.Complete && len(invocation.ToolExecutionNotifications) == 0 {
+		invocation.ToolExecutionNotifications = append(invocation.ToolExecutionNotifications, sarifNotification{
 			Level: "warning",
 			Message: sarifMessage{Text: fmt.Sprintf(
 				"Scan incomplete: inspected %d files and skipped %d paths. Review scan diagnostics; an empty result is not a clean bill of health.",
 				report.ScannedFiles, len(report.SkippedPaths))},
-		}}
+		})
 	}
 	log := sarifLog{
 		Version: "2.1.0", Schema: "https://json.schemastore.org/sarif-2.1.0.json",
