@@ -35,7 +35,7 @@ func TestRunCleanDirectory(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d; output: %s", code, output)
 	}
-	if !strings.Contains(output, "no matching secret patterns") {
+	if !strings.Contains(output, "no matching secret or configuration patterns") {
 		t.Fatalf("unexpected output: %s", output)
 	}
 }
