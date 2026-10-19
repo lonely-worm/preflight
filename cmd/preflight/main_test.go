@@ -38,22 +38,24 @@ func TestRunCleanDirectory(t *testing.T) {
 	}
 }
 
-func TestRunJSONCleanDirectoryReturnsEmptyArray(t *testing.T) {
+func TestRunJSONCleanDirectoryReturnsReport(t *testing.T) {
 	root := t.TempDir()
 	code, output := captureStdout(t, func() int { return run([]string{"-format", "json", root}) })
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d; output: %s", code, output)
 	}
-
-	var findings []map[string]any
-	if err := json.Unmarshal([]byte(output), &findings); err != nil {
-		t.Fatalf("expected valid JSON array, got %q: %v", output, err)
+	var report struct {
+		Findings []map[string]any `json:"findings"`
+		Complete bool `json:"complete"`
 	}
-	if findings == nil {
-		t.Fatal("expected an empty array, got null")
+	if err := json.Unmarshal([]byte(output), &report); err != nil {
+		t.Fatalf("expected valid JSON scan report, got %q: %v", output, err)
 	}
-	if len(findings) != 0 {
-		t.Fatalf("expected no findings, got %d", len(findings))
+	if report.Findings == nil || len(report.Findings) != 0 {
+		t.Fatalf("expected an empty findings array, got %#v", report.Findings)
+	}
+	if !report.Complete {
+		t.Fatal("expected complete scan report")
 	}
 }
 
@@ -152,6 +154,69 @@ func TestSARIFEscapesArtifactPathAsURI(t *testing.T) {
 	}
 	if artifact["uri"] != "secret%20file.env" {
 		t.Fatalf("expected URI-escaped artifact path, got %#v", artifact["uri"])
+	}
+}
+
+
+func TestRunReportsOversizedFileAsIncompleteInJSON(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "large.txt"), []byte(strings.Repeat("x", 128)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	code, output := captureStdout(t, func() int {
+		return run([]string{"-format", "json", "-max-file-size", "64", root})
+	})
+	if code != 2 {
+		t.Fatalf("expected exit 2 for incomplete scan, got %d; output: %s", code, output)
+	}
+	var report struct {
+		Complete bool `json:"complete"`
+		SkippedPaths []struct {
+			Reason string `json:"reason"`
+		} `json:"skipped_paths"`
+	}
+	if err := json.Unmarshal([]byte(output), &report); err != nil {
+		t.Fatalf("expected valid JSON scan report: %v", err)
+	}
+	if report.Complete {
+		t.Fatal("incomplete scan must not be marked complete")
+	}
+	if len(report.SkippedPaths) != 1 || report.SkippedPaths[0].Reason != "file_too_large" {
+		t.Fatalf("expected oversized-file diagnostic, got %#v", report.SkippedPaths)
+	}
+}
+
+func TestRunMarksIncompleteSARIFExecution(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "large.txt"), []byte(strings.Repeat("x", 128)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	code, output := captureStdout(t, func() int {
+		return run([]string{"-format", "sarif", "-max-file-size", "64", root})
+	})
+	if code != 2 {
+		t.Fatalf("expected exit 2 for incomplete scan, got %d; output: %s", code, output)
+	}
+	var report map[string]any
+	if err := json.Unmarshal([]byte(output), &report); err != nil {
+		t.Fatalf("expected valid SARIF JSON: %v", err)
+	}
+	runs, ok := report["runs"].([]any)
+	if !ok || len(runs) != 1 {
+		t.Fatalf("expected one SARIF run, got %#v", report["runs"])
+	}
+	runObject := runs[0].(map[string]any)
+	invocations, ok := runObject["invocations"].([]any)
+	if !ok || len(invocations) != 1 {
+		t.Fatalf("expected one SARIF invocation, got %#v", runObject["invocations"])
+	}
+	invocation := invocations[0].(map[string]any)
+	if invocation["executionSuccessful"] != false {
+		t.Fatalf("expected unsuccessful SARIF invocation, got %#v", invocation["executionSuccessful"])
+	}
+	notifications, ok := invocation["toolExecutionNotifications"].([]any)
+	if !ok || len(notifications) == 0 {
+		t.Fatal("expected warning notification for incomplete scan")
 	}
 }
 
