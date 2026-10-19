@@ -137,3 +137,64 @@ func TestScanDetectsAdditionalCredentialFormats(t *testing.T) {
 		}
 	}
 }
+
+
+func TestScanWithReportExplainsSkippedPathsAndMarksIncomplete(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "readme.txt"), []byte("ordinary project notes"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "empty.txt"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "large.txt"), []byte(strings.Repeat("x", 128)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "binary.dat"), []byte{'a', 0, 'b'}, 0600); err != nil {
+		t.Fatal(err)
+	}
+	hidden := filepath.Join(root, ".private")
+	if err := os.MkdirAll(hidden, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hidden, "notes.txt"), []byte("hidden"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := ScanWithReport(root, Options{MaxFileSize: 64})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Complete {
+		t.Fatal("expected incomplete status when paths are skipped")
+	}
+	if report.ScannedFiles != 1 {
+		t.Fatalf("expected one scanned file, got %d", report.ScannedFiles)
+	}
+	reasons := make(map[string]bool)
+	for _, issue := range report.SkippedPaths {
+		reasons[issue.Reason] = true
+	}
+	for _, reason := range []string{"empty_file", "file_too_large", "binary_file", "hidden_directory"} {
+		if !reasons[reason] {
+			t.Errorf("expected skip reason %q in report: %#v", reason, report.SkippedPaths)
+		}
+	}
+}
+
+func TestScanWithReportMarksFullyScannedTreeComplete(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "source.go"), []byte("package example\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	report, err := ScanWithReport(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Complete {
+		t.Fatalf("expected complete scan, got skipped paths: %#v", report.SkippedPaths)
+	}
+	if report.ScannedFiles != 1 || len(report.SkippedPaths) != 0 {
+		t.Fatalf("unexpected scan accounting: %#v", report)
+	}
+}
