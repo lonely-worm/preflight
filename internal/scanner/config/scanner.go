@@ -20,7 +20,7 @@ type rule struct {
 }
 
 var rules = []rule{
-	{"docker-user-root", "high", "Docker image does not declare a non-root USER", "Add a dedicated non-root user and a USER directive after installing packages.", regexp.MustCompile(`(^|/)Dockerfile([^/]*)$`), regexp.MustCompile(`(?i)^\s*USER\s+`)},
+	{"docker-user-root", "high", "Docker image explicitly selects root as its runtime user", "Create a dedicated non-root user and set USER to that account.", regexp.MustCompile(`(^|/)Dockerfile([^/]*)$`), regexp.MustCompile(`(?i)^\\s*USER\\s+(root|0)\\s*$`)},
 	{"docker-privileged", "critical", "Container is configured as privileged", "Remove privileged mode and grant only the specific capabilities the container needs.", regexp.MustCompile(`(?i)(docker-compose|compose).*\.ya?ml$`), regexp.MustCompile(`(?i)privileged\s*:\s*true\b`)},
 	{"docker-host-network", "high", "Container uses host networking", "Prefer an isolated bridge network and publish only required ports.", regexp.MustCompile(`(?i)(docker-compose|compose).*\.ya?ml$`), regexp.MustCompile(`(?i)network_mode\s*:\s*["']?host\b`)},
 	{"terraform-public-ingress", "high", "Terraform ingress rule allows traffic from all IPv4 addresses", "Restrict cidr_blocks to trusted ranges and required ports.", regexp.MustCompile(`\.tf$`), regexp.MustCompile(`(?i)0\.0\.0\.0/0`)},
@@ -58,7 +58,7 @@ func Scan(root string) ([]secret.Finding, error) {
 			lineNo++
 			line := scanner.Text()
 			for _, r := range rules {
-				if !r.filePattern.MatchString(rel) || !r.linePattern.MatchString(line) || seen[r.id] && r.id == "docker-user-root" { continue }
+	{"docker-user-root", "high", "Docker image explicitly selects root as its runtime user", "Create a dedicated non-root user and set USER to that account.", regexp.MustCompile(`(^|/)Dockerfile([^/]*)$`), regexp.MustCompile(`(?i)^\\s*USER\\s+(root|0)\\s*$`)},
 				message := r.message + " Remediation: " + r.remediation
 				findings = append(findings, secret.Finding{RuleID: r.id, Severity: r.severity, Path: rel, Line: lineNo, Column: 1, Message: message})
 				seen[r.id] = true
