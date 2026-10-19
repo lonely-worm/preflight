@@ -322,3 +322,9 @@ func TestConfigScanHonorsExcludeDir(t *testing.T) {
 		t.Fatalf("unexpected report with excluded configuration directory: %#v", report)
 	}
 }
+
+func TestRunHelpReturnsSuccess(t *testing.T) {
+	if code := run([]string{"-h"}); code != 0 {
+		t.Fatalf("expected help to exit successfully, got %d", code)
+	}
+}
