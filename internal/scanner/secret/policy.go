@@ -66,7 +66,7 @@ func LoadConfig(path string) (Config, error) {
 	for _, r := range rules {
 		knownRules[r.id] = true
 	}
-	for _, id := range []string{"docker-user-root", "docker-privileged", "docker-host-network", "terraform-public-ingress", "github-actions-write-permissions", "github-actions-unpinned", "kubernetes-privileged", "kubernetes-root-user", "go-vulnerability"} { knownRules[id] = true }
+	for _, id := range []string{"aws-secret-access-key", "aws-session-token", "docker-user-root", "docker-privileged", "docker-host-network", "terraform-public-ingress", "github-actions-write-permissions", "github-actions-unpinned", "kubernetes-privileged", "kubernetes-root-user", "go-vulnerability"} { knownRules[id] = true }
 	for id, ruleConfig := range config.Rules {
 		if !knownRules[id] {
 			return config, fmt.Errorf("unknown rule ID %q in config", id)
