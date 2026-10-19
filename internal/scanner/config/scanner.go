@@ -113,7 +113,6 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 					return filepath.SkipDir
 				}
 				if _, ok := excluded[filepath.Clean(entry.Name())]; ok {
-					addIssue(path, "excluded_directory", "directory matched -exclude-dir", false)
 					return filepath.SkipDir
 				}
 			}
