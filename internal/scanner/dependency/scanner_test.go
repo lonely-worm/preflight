@@ -7,6 +7,7 @@ import (
 
 func TestParseJSONHandlesOutOfOrderEventsAndMapsSourceLocation(t *testing.T) {
 	stream := strings.Join([]string{
+		`{"config":{"protocol_version":"v1.0.0"}}`,
 		`{"finding":{"osv":"GO-2026-1234","fixed_version":"v1.4.2","trace":[{"module":"example.com/vulnerable","version":"v1.4.0","package":"example.com/vulnerable/parser","function":"Parse","position":{"filename":"parser/parse.go","line":7,"column":3}},{"module":"example.com/app","package":"example.com/app","function":"main","position":{"filename":"cmd/server/main.go","line":42,"column":9}}]}}`,
 		`{"osv":{"id":"GO-2026-1234","summary":"Malformed input may panic"}}`,
 		`{"finding":{"osv":"GO-2026-1234","fixed_version":"v1.4.2","trace":[{"module":"example.com/vulnerable","version":"v1.4.0","package":"example.com/vulnerable/parser","function":"Parse","position":{"filename":"parser/parse.go","line":7,"column":3}},{"module":"example.com/app","package":"example.com/app","function":"main","position":{"filename":"cmd/server/main.go","line":42,"column":9}}]}}`,
@@ -33,8 +34,8 @@ func TestParseJSONHandlesOutOfOrderEventsAndMapsSourceLocation(t *testing.T) {
 	}
 }
 
-func TestParseJSONReportsModuleLevelFindingsWithoutTrace(t *testing.T) {
-	stream := `{"finding":{"osv":"GO-2026-4321","fixed_version":"v2.0.1","trace":[{"module":"example.com/dependency","version":"v2.0.0"}]}}`
+func TestParseJSONReportsModuleLevelFindingWithoutSourceLocation(t *testing.T) {
+	stream := "{\"config\":{\"protocol_version\":\"v1.0.0\"}}\n" + `{"finding":{"osv":"GO-2026-4321","fixed_version":"v2.0.1","trace":[{"module":"example.com/dependency","version":"v2.0.0"}]}}`
 	findings, err := parseJSON(strings.NewReader(stream))
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +54,8 @@ func TestParseJSONReportsModuleLevelFindingsWithoutTrace(t *testing.T) {
 func TestParseJSONRejectsMalformedOrUnidentifiableFinding(t *testing.T) {
 	for _, stream := range []string{
 		`{"finding":`,
-		`{"finding":{"fixed_version":"v1.2.3","trace":[]}}`,
+		"{\"config\":{\"protocol_version\":\"v1.0.0\"}}\n" + `{"finding":{"fixed_version":"v1.2.3","trace":[]}}`,
+		"",
 	} {
 		if _, err := parseJSON(strings.NewReader(stream)); err == nil {
 			t.Errorf("expected parse error for %q", stream)
