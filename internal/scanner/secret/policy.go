@@ -1,10 +1,12 @@
 package secret
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -56,7 +58,7 @@ func LoadConfig(path string) (Config, error) {
 	if err != nil {
 		return config, err
 	}
-	if err := json.Unmarshal(data, &config); err != nil {
+	if err := decodeStrictJSON(data, &config); err != nil {
 		return config, fmt.Errorf("parse config: %w", err)
 	}
 	validSeverity := map[string]bool{"critical": true, "high": true, "medium": true, "low": true, "info": true}
@@ -86,7 +88,7 @@ func LoadBaseline(path string) (Baseline, error) {
 	if err != nil {
 		return baseline, err
 	}
-	if err := json.Unmarshal(data, &baseline); err != nil {
+	if err := decodeStrictJSON(data, &baseline); err != nil {
 		return baseline, fmt.Errorf("parse baseline: %w", err)
 	}
 	if baseline.Version != 1 {
@@ -124,4 +126,23 @@ func WriteBaseline(path string, findings []Finding) error {
 	}
 	data = append(data, '\n')
 	return os.WriteFile(path, data, 0600)
+}
+
+
+// decodeStrictJSON rejects unknown fields and trailing JSON values so a typo in a security
+// policy cannot silently fall back to a scanner default.
+func decodeStrictJSON(data []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("multiple JSON values are not allowed")
+		}
+		return err
+	}
+	return nil
 }
