@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -55,9 +56,12 @@ func Scan(root string) ([]secret.Finding, error) {
 	decoder := json.NewDecoder(bufio.NewReader(&stdout))
 	seen := map[string]bool{}
 	var currentOSV = map[string]struct{ ID, Summary string }{}
-	for decoder.More() {
+	for {
 		var e event
-		if err := decoder.Decode(&e); err != nil { return nil, fmt.Errorf("decode govulncheck JSON: %w", err) }
+		if err := decoder.Decode(&e); err != nil {
+			if err == io.EOF { break }
+			return nil, fmt.Errorf("decode govulncheck JSON: %w", err)
+		}
 		if e.OSV != nil {
 			currentOSV[e.OSV.ID] = struct{ ID, Summary string }{e.OSV.ID, e.OSV.Summary}
 		}
