@@ -87,6 +87,8 @@ These are pattern-based heuristics. A match is a **potential finding**, not proo
 
 ## Scan completeness and exit codes
 
+CI regression tests also verify that incomplete JSON and SARIF runs fail closed.
+
 Every output format reports scan completeness. Text output lists skipped paths and reasons; JSON returns an object containing `findings`, `scanned_files`, `skipped_paths`, and `complete`. SARIF marks incomplete execution as unsuccessful and includes a warning notification.
 
 - `0` — scan completed without findings; paths intentionally excluded by policy may still be listed.
