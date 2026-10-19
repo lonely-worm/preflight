@@ -3,6 +3,7 @@ package dependency
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/lonely-worm/preflight/internal/scanner/secret"
 )
@@ -55,19 +57,27 @@ type vulnerabilityInfo struct {
 	Summary string
 }
 
+const govulncheckTimeout = 10 * time.Minute
+
 // Scan invokes govulncheck's official Go vulnerability analysis. The tool must be installed.
 // JSON mode is used so that vulnerabilities can be included in the report without making a
-// vulnerability finding look like an execution failure.
+// vulnerability finding look like an execution failure. A timeout prevents a stuck subprocess
+// from holding a Preflight invocation open indefinitely.
 func Scan(root string) ([]secret.Finding, error) {
 	if _, err := filepath.Abs(root); err != nil {
 		return nil, err
 	}
-	cmd := exec.Command("govulncheck", "-json", "./...")
+	ctx, cancel := context.WithTimeout(context.Background(), govulncheckTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "govulncheck", "-json", "./...")
 	cmd.Dir = root
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	runErr := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, fmt.Errorf("govulncheck timed out after %s", govulncheckTimeout)
+	}
 
 	findings, parseErr := parseJSON(&stdout)
 	if parseErr != nil {
