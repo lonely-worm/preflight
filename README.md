@@ -51,7 +51,7 @@ Choose the asset matching your operating system and CPU architecture. On Linux o
 
 Releases are generated from semantic-version tags such as `v1.2.3`. The workflow runs tests, cross-compiles all six targets, and attaches the binaries plus SHA-256 checksums to the GitHub Release.
 
-Run tests and static checks:
+Run tests and static checks (CI tests the minimum Go version and the current supported Go toolchain):
 
 ```sh
 go test ./...
@@ -113,7 +113,7 @@ These are pattern-based heuristics. A match is a **potential finding**, not proo
 
 ## Dependency and configuration scanning
 
-The default scan checks common risky settings in Dockerfiles, Compose files, Terraform files, Kubernetes manifests, and GitHub Actions workflows. Findings include a rule ID, severity, source location, and concrete remediation guidance.
+The default scan checks common risky settings in Dockerfiles, Compose files, Terraform files, Kubernetes manifests, and GitHub Actions workflows. Findings include a rule ID, severity, source location, and concrete remediation guidance. Configuration checks always inspect supported files under `.github/workflows/` even when `-include-hidden` is not set; explicit `-exclude-dir` entries and `-max-file-size` apply to both scan stages.
 
 ```sh
 # Scan secrets and security-sensitive configuration
@@ -180,6 +180,10 @@ The Code Scanning workflow validates the SARIF JSON, uploads the report to GitHu
 - `2` — invalid options, a fatal scan/output error, or an incomplete scan (for example, an unreadable, binary, or oversized file). Review the report before treating the result as clean.
 
 Preflight reports intentional scope exclusions such as hidden paths, default-ignored directories, and `-exclude-dir` entries. These are disclosed in `skipped_paths` but do not by themselves mark the scan incomplete. Files that could not be inspected due to read errors, binary content, or the size limit do mark it incomplete.
+
+## Security reporting
+
+Please do not include live credentials in public issues. See [SECURITY.md](SECURITY.md) for responsible vulnerability disclosure instructions and current support expectations.
 
 ## Safety and limitations
 
