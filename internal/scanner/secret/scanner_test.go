@@ -200,3 +200,27 @@ func TestScanWithReportMarksFullyScannedTreeComplete(t *testing.T) {
 		t.Fatalf("unexpected scan accounting: %#v", report)
 	}
 }
+
+func TestScanFollowsSymlinkRoot(t *testing.T) {
+	parent := t.TempDir()
+	target := filepath.Join(parent, "project")
+	if err := os.MkdirAll(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	token := "ghp_" + strings.Repeat("a", 50)
+	if err := os.WriteFile(filepath.Join(target, "sample.env"), []byte("GITHUB_TOKEN="+token+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(parent, "project-link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks are unavailable on this platform: %v", err)
+	}
+
+	report, err := ScanWithReport(link, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Complete || report.ScannedFiles != 1 || len(report.Findings) != 1 {
+		t.Fatalf("expected symlink target to be scanned completely, got %#v", report)
+	}
+}
