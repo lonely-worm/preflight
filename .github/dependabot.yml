@@ -7,9 +7,6 @@ updates:
       day: monday
       time: "09:00"
       timezone: Asia/Jakarta
-    labels:
-      - dependencies
-      - security
     commit-message:
       prefix: ci
     open-pull-requests-limit: 5
@@ -21,8 +18,6 @@ updates:
       day: monday
       time: "09:00"
       timezone: Asia/Jakarta
-    labels:
-      - dependencies
     commit-message:
       prefix: deps
     open-pull-requests-limit: 5
