@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"sort"
 	"fmt"
 	"io"
 	"net/url"
@@ -68,12 +69,12 @@ func run(args []string) int {
 
 	config, err := secret.LoadConfig(*configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "preflight: config: %v\\n", err)
+		fmt.Fprintf(os.Stderr, "preflight: config: %v\n", err)
 		return 2
 	}
 	baseline, err := secret.LoadBaseline(*baselinePath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "preflight: baseline: %v\\n", err)
+		fmt.Fprintf(os.Stderr, "preflight: baseline: %v\n", err)
 		return 2
 	}
 	report, err := secret.ScanWithReport(root, secret.Options{
@@ -88,19 +89,27 @@ func run(args []string) int {
 		return 2
 	}
 	if *checkConfig {
-		configFindings, scanErr := configscanner.Scan(root)
+		configReport, scanErr := configscanner.ScanWithReport(root, configscanner.Options{
+			MaxFileSize: *maxFileSize,
+			ExcludeDirs: excluded,
+		})
 		if scanErr != nil {
-			fmt.Fprintf(os.Stderr, "preflight: configuration scan incomplete: %v\\n", scanErr)
+			fmt.Fprintf(os.Stderr, "preflight: configuration scan incomplete: %v\n", scanErr)
 			report.Complete = false
 			report.SkippedPaths = append(report.SkippedPaths, secret.ScanIssue{Path: root, Reason: "configuration_scan_error", Detail: scanErr.Error()})
 		} else {
-			report.Findings = append(report.Findings, applyPolicy(configFindings, config, baseline, &report.SuppressedFindings)...)
+			report.ConfigurationFilesScanned = configReport.ScannedFiles
+			report.Findings = append(report.Findings, applyPolicy(configReport.Findings, config, baseline, &report.SuppressedFindings)...)
+			report.SkippedPaths = append(report.SkippedPaths, configReport.SkippedPaths...)
+			if !configReport.Complete {
+				report.Complete = false
+			}
 		}
 	}
 	if *checkDependencies {
 		dependencyFindings, scanErr := depscanner.Scan(root)
 		if scanErr != nil {
-			fmt.Fprintf(os.Stderr, "preflight: dependency scan incomplete: %v\\n", scanErr)
+			fmt.Fprintf(os.Stderr, "preflight: dependency scan incomplete: %v\n", scanErr)
 			report.Complete = false
 			report.SkippedPaths = append(report.SkippedPaths, secret.ScanIssue{Path: "go.mod", Reason: "dependency_scan_error", Detail: scanErr.Error()})
 		} else {
@@ -108,11 +117,22 @@ func run(args []string) int {
 		}
 	}
 	if *writeBaseline != "" {
-		if err := secret.WriteBaseline(*writeBaseline, report.Findings); err != nil {
-			fmt.Fprintf(os.Stderr, "preflight: write baseline: %v\\n", err)
+		if !report.Complete {
+			fmt.Fprintln(os.Stderr, "preflight: refusing to write a baseline from an incomplete scan; resolve scan errors and rerun")
+			for _, issue := range report.SkippedPaths {
+				if issue.Detail == "" {
+					fmt.Fprintf(os.Stderr, "  SKIPPED %s [%s]\n", issue.Path, issue.Reason)
+				} else {
+					fmt.Fprintf(os.Stderr, "  SKIPPED %s [%s]: %s\n", issue.Path, issue.Reason, issue.Detail)
+				}
+			}
 			return 2
 		}
-		fmt.Fprintf(os.Stdout, "Wrote %d baseline entries to %s\\n", len(report.Findings), *writeBaseline)
+		if err := secret.WriteBaseline(*writeBaseline, report.Findings); err != nil {
+			fmt.Fprintf(os.Stderr, "preflight: write baseline: %v\n", err)
+			return 2
+		}
+		fmt.Fprintf(os.Stdout, "Wrote %d baseline entries to %s\n", len(report.Findings), *writeBaseline)
 		return 0
 	}
 	if report.Findings == nil {
@@ -121,6 +141,13 @@ func run(args []string) int {
 	if report.SkippedPaths == nil {
 		report.SkippedPaths = []secret.ScanIssue{}
 	}
+	sort.Slice(report.Findings, func(i, j int) bool {
+		a, b := report.Findings[i], report.Findings[j]
+		if a.Path != b.Path { return a.Path < b.Path }
+		if a.Line != b.Line { return a.Line < b.Line }
+		if a.Column != b.Column { return a.Column < b.Column }
+		return a.RuleID < b.RuleID
+	})
 
 	switch *format {
 	case "sarif":
@@ -158,8 +185,8 @@ func printTextReport(w io.Writer, report secret.Report) {
 	if !report.Complete {
 		status = "INCOMPLETE"
 	}
-	fmt.Fprintf(w, "\nScan status: %s | scanned files: %d | skipped paths: %d | findings: %d\n",
-		status, report.ScannedFiles, len(report.SkippedPaths), len(report.Findings))
+	fmt.Fprintf(w, "\nScan status: %s | scanned files: %d | configuration files: %d | skipped paths: %d | findings: %d\n",
+		status, report.ScannedFiles, report.ConfigurationFilesScanned, len(report.SkippedPaths), len(report.Findings))
 	for _, issue := range report.SkippedPaths {
 		if issue.Detail == "" {
 			fmt.Fprintf(w, "SKIPPED %s [%s]\n", issue.Path, issue.Reason)
@@ -309,8 +336,9 @@ func writeSARIF(w io.Writer, report secret.Report) error {
 	invocation := sarifInvocation{ExecutionSuccessful: report.Complete}
 	for _, issue := range report.SkippedPaths {
 		level := "note"
-		switch issue.Reason {
-		case "walk_error", "stat_error", "file_too_large", "binary_file", "read_error":
+		if strings.Contains(issue.Reason, "error") ||
+			strings.Contains(issue.Reason, "too_large") ||
+			issue.Reason == "binary_file" {
 			level = "warning"
 		}
 		message := fmt.Sprintf("Skipped path %q (%s)", issue.Path, issue.Reason)
