@@ -17,6 +17,8 @@ Preflight scans a local project directory for common hard-coded credential patte
 - Stable finding order for predictable output.
 - Scan report includes inspected-file counts, skipped paths with reasons, and an explicit completeness status.
 - Scan report includes inspected-file counts, skipped paths with reasons, and an explicit completeness status.
+- JSON rule configuration with per-rule enable/disable and severity overrides.
+- Baseline support for suppressing known findings without storing credential values.
 - Hidden-file control, directory exclusions, and configurable maximum file size.
 - GitHub Actions workflows for tests/build checks and SARIF upload to GitHub Code Scanning.
 
@@ -85,6 +87,39 @@ go run ./cmd/preflight -max-file-size 1048576 .
 
 These are pattern-based heuristics. A match is a **potential finding**, not proof that a credential is valid or exploitable.
 
+## Rule configuration and baseline
+
+Create a `preflight.json` file to disable a rule or override its severity. Unspecified rules keep their built-in defaults.
+
+```json
+{
+  "rules": {
+    "generic-secret-assignment": {
+      "enabled": true,
+      "severity": "low"
+    },
+    "google-api-key": {
+      "enabled": false
+    }
+  }
+}
+```
+
+Supported severities are `critical`, `high`, `medium`, `low`, and `info`. Unknown rule IDs and invalid severities are rejected instead of silently ignored.
+
+```sh
+# Scan using custom rules
+go run ./cmd/preflight -config preflight.json .
+
+# Create/update a baseline from current findings
+go run ./cmd/preflight -write-baseline .preflight-baseline.json .
+
+# Suppress findings already represented in a baseline
+go run ./cmd/preflight -baseline .preflight-baseline.json .
+```
+
+The baseline stores a fingerprint plus rule ID, relative path, line, and column—not the matched secret. Fingerprints are location-based; moving a finding or editing nearby lines can cause it to reappear and require baseline regeneration. Review findings before accepting them into a baseline. New findings remain visible, and the text report shows how many were suppressed.
+
 ## Scan completeness and exit codes
 
 CI regression tests also verify that incomplete JSON and SARIF runs fail closed.
@@ -109,7 +144,7 @@ Preflight reports intentional scope exclusions such as hidden paths, default-ign
 ## Roadmap
 
 1. Expand regression coverage for detection edge cases and false positives.
-2. Add baseline support and configurable severity policy.
+2. Add dependency and configuration-file scanners.
 3. Add benchmarks and publish versioned cross-platform releases.
 
 
