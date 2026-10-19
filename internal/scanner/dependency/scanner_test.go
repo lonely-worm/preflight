@@ -1,8 +1,11 @@
 package dependency
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lonely-worm/preflight/internal/scanner/secret"
 )
 
 func TestParseJSONHandlesOutOfOrderEventsAndMapsSourceLocation(t *testing.T) {
@@ -93,6 +96,33 @@ func TestParseJSONRequiresConfigFirstAndSingleEventType(t *testing.T) {
 	} {
 		if _, err := parseJSON(strings.NewReader(stream)); err == nil {
 			t.Errorf("expected invalid event stream to be rejected: %s", stream)
+		}
+	}
+}
+
+func TestNormalizeFindingPathsKeepsLocationsRelativeAndRedactsOutsidePaths(t *testing.T) {
+	root := t.TempDir()
+	inside := filepath.Join(root, "internal", "worker.go")
+	outside := filepath.Join(filepath.Dir(root), "outside.go")
+	original := []secret.Finding{
+		{RuleID: "go-vulnerability", Path: inside, Line: 12, Column: 4, Message: "test finding"},
+		{RuleID: "go-vulnerability", Path: outside, Line: 3, Column: 2, Message: "external finding"},
+		{RuleID: "go-vulnerability", Path: "../outside.go", Line: 1, Column: 1, Message: "relative escape"},
+	}
+
+	got := normalizeFindingPaths(root, original)
+	if got[0].Path != "internal/worker.go" {
+		t.Fatalf("expected repository-relative path, got %q", got[0].Path)
+	}
+	for _, finding := range got[1:] {
+		if finding.Path != "go.mod" {
+			t.Errorf("outside path should fall back to go.mod, got %q", finding.Path)
+		}
+		if strings.Contains(finding.Message, root) || strings.Contains(finding.Message, filepath.Dir(root)) {
+			t.Errorf("finding message leaked an absolute path: %q", finding.Message)
+		}
+		if !strings.Contains(finding.Message, "outside the scanned project") {
+			t.Errorf("expected fallback explanation, got %q", finding.Message)
 		}
 	}
 }
