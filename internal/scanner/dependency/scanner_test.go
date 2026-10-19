@@ -84,3 +84,15 @@ func TestParseJSONAcceptsCompleteNoFindingStream(t *testing.T) {
 		t.Fatalf("expected an empty findings slice, got %#v", findings)
 	}
 }
+
+func TestParseJSONRequiresConfigFirstAndSingleEventType(t *testing.T) {
+	for _, stream := range []string{
+		`{"progress":{"message":"started"}}\n{"config":{"protocol_version":"v1.0.0"}}`,
+		`{"config":{"protocol_version":"v1.0.0"},"progress":{}}`,
+		`{"config":{"protocol_version":"v1.0.0"}}\n{"unknownEvent":{}}`,
+	} {
+		if _, err := parseJSON(strings.NewReader(stream)); err == nil {
+			t.Errorf("expected invalid event stream to be rejected: %s", stream)
+		}
+	}
+}
