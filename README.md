@@ -16,6 +16,7 @@ Preflight scans a local project directory for common hard-coded credential patte
 - Text, JSON, and SARIF 2.1.0 output.
 - Stable finding order for predictable output.
 - Scan report includes inspected-file counts, skipped paths with reasons, and an explicit completeness status.
+- Scan report includes inspected-file counts, skipped paths with reasons, and an explicit completeness status.
 - Hidden-file control, directory exclusions, and configurable maximum file size.
 - GitHub Actions workflows for tests/build checks and SARIF upload to GitHub Code Scanning.
 
