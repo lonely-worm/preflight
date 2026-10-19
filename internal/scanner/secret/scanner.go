@@ -99,7 +99,7 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 	}
 
 	report := Report{Findings: []Finding{}, SkippedPaths: []ScanIssue{}, Complete: true}
-	addIssue := func(path, reason, detail string) {
+	addIssue := func(path, reason, detail string, makesIncomplete bool) {
 		rel, relErr := filepath.Rel(root, path)
 		if relErr == nil {
 			path = filepath.ToSlash(rel)
@@ -112,7 +112,7 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			addIssue(path, "walk_error", walkErr.Error())
+			addIssue(path, "walk_error", walkErr.Error(), true)
 			return nil
 		}
 		if path == root {
@@ -121,38 +121,38 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 		name := d.Name()
 		if d.IsDir() {
 			if _, ok := ignoredDirs[name]; ok {
-				addIssue(path, "ignored_directory", "directory is excluded by Preflight defaults")
+				addIssue(path, "ignored_directory", "directory is excluded by Preflight defaults", false)
 				return filepath.SkipDir
 			}
 			if _, ok := excluded[filepath.Clean(name)]; ok {
-				addIssue(path, "excluded_directory", "directory matched -exclude-dir")
+				addIssue(path, "excluded_directory", "directory matched -exclude-dir", false)
 				return filepath.SkipDir
 			}
 			if !opts.IncludeHidden && strings.HasPrefix(name, ".") {
-				addIssue(path, "hidden_directory", "use -include-hidden to scan hidden directories")
+				addIssue(path, "hidden_directory", "use -include-hidden to scan hidden directories", false)
 				return filepath.SkipDir
 			}
 			return nil
 		}
 		if !d.Type().IsRegular() {
-			addIssue(path, "non_regular_file", "only regular files are scanned")
+			addIssue(path, "non_regular_file", "only regular files are scanned", false)
 			return nil
 		}
 		if !opts.IncludeHidden && strings.HasPrefix(name, ".") {
-			addIssue(path, "hidden_file", "use -include-hidden to scan hidden files")
+			addIssue(path, "hidden_file", "use -include-hidden to scan hidden files", false)
 			return nil
 		}
 		fi, err := d.Info()
 		if err != nil {
-			addIssue(path, "stat_error", err.Error())
+			addIssue(path, "stat_error", err.Error(), true)
 			return nil
 		}
 		if fi.Size() > maxSize {
-			addIssue(path, "file_too_large", fmt.Sprintf("size %d bytes exceeds limit %d bytes", fi.Size(), maxSize))
+			addIssue(path, "file_too_large", fmt.Sprintf("size %d bytes exceeds limit %d bytes", fi.Size(), maxSize), true)
 			return nil
 		}
 		if fi.Size() == 0 {
-			addIssue(path, "empty_file", "empty file contains no content to inspect")
+			addIssue(path, "empty_file", "empty file contains no content to inspect", false)
 			return nil
 		}
 		fileFindings, err := scanFile(root, path, maxSize)
@@ -161,7 +161,7 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 			if errors.Is(err, errBinaryFile) {
 				reason = "binary_file"
 			}
-			addIssue(path, reason, err.Error())
+			addIssue(path, reason, err.Error(), true)
 			return nil
 		}
 		report.ScannedFiles++
