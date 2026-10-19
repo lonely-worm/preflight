@@ -46,9 +46,10 @@ type configEvent struct {
 }
 
 type event struct {
-	Config  *configEvent  `json:"config,omitempty"`
-	OSV     *osvEvent     `json:"osv,omitempty"`
-	Finding *findingEvent `json:"finding,omitempty"`
+	Config   *configEvent  `json:"config,omitempty"`
+	Progress *struct{}     `json:"progress,omitempty"`
+	OSV      *osvEvent     `json:"osv,omitempty"`
+	Finding  *findingEvent `json:"finding,omitempty"`
 }
 
 type vulnerabilityInfo struct {
@@ -112,6 +113,20 @@ func parseJSON(reader io.Reader) ([]secret.Finding, error) {
 			return nil, err
 		}
 		messageCount++
+		eventFields := 0
+		if e.Config != nil { eventFields++ }
+		if e.Progress != nil { eventFields++ }
+		if e.OSV != nil { eventFields++ }
+		if e.Finding != nil { eventFields++ }
+		if eventFields != 1 {
+			return nil, fmt.Errorf("govulncheck JSON event %d must contain exactly one event type", messageCount)
+		}
+		if messageCount == 1 && e.Config == nil {
+			return nil, fmt.Errorf("govulncheck config event must be first")
+		}
+		if e.Config != nil && messageCount != 1 {
+			return nil, fmt.Errorf("govulncheck config event must be first")
+		}
 		switch {
 		case e.Config != nil:
 			if configSeen {
