@@ -87,6 +87,29 @@ go run ./cmd/preflight -max-file-size 1048576 .
 
 These are pattern-based heuristics. A match is a **potential finding**, not proof that a credential is valid or exploitable.
 
+## Dependency and configuration scanning
+
+The default scan checks common risky settings in Dockerfiles, Compose files, Terraform files, Kubernetes manifests, and GitHub Actions workflows. Findings include a rule ID, severity, source location, and concrete remediation guidance.
+
+```sh
+# Scan secrets and security-sensitive configuration
+go run ./cmd/preflight .
+
+# Also check Go dependencies against the official Go vulnerability database
+go install golang.org/x/vuln/cmd/govulncheck@latest
+go run ./cmd/preflight -deps .
+```
+
+The dependency scan requires `govulncheck` on `PATH` and network access to the Go vulnerability database. It reports known vulnerabilities found by govulncheck's code-aware analysis, including reachable vulnerable symbols and a fixed version when available. If the tool is missing or the scan fails, Preflight marks the overall report incomplete instead of presenting a clean result. See the [official Go vulnerability management documentation](https://go.dev/doc/security/vuln/).
+
+Configuration rules currently include:
+- Docker containers explicitly configured to run as root, privileged Compose services, and host networking.
+- Terraform ingress rules containing `0.0.0.0/0`.
+- GitHub Actions workflows granting `write-all` permissions or using mutable version tags instead of full commit SHAs.
+- Kubernetes manifests enabling privileged containers or explicitly setting `runAsUser: 0`.
+
+These checks are heuristic and should be reviewed in context. For GitHub Actions, pinning to a reviewed full commit SHA is the recommended security practice; see [GitHub's secure-use guidance](https://docs.github.com/en/actions/reference/security/secure-use).
+
 ## Rule configuration and baseline
 
 Create a `preflight.json` file to disable a rule or override its severity. Unspecified rules keep their built-in defaults.
