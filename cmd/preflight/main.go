@@ -59,7 +59,7 @@ func run(args []string) int {
 		root = flags.Arg(0)
 	}
 
-	findings, err := secret.Scan(root, secret.Options{
+	report, err := secret.ScanWithReport(root, secret.Options{
 		MaxFileSize:   *maxFileSize,
 		IncludeHidden: *includeHidden,
 		ExcludeDirs:   excluded,
@@ -68,40 +68,65 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "preflight: scan failed: %v\n", err)
 		return 2
 	}
-
-	// Keep machine-readable output consistent: an empty scan is an empty array, not null.
-	if findings == nil {
-		findings = []secret.Finding{}
+	if report.Findings == nil {
+		report.Findings = []secret.Finding{}
+	}
+	if report.SkippedPaths == nil {
+		report.SkippedPaths = []secret.ScanIssue{}
 	}
 
-	if *format == "sarif" {
-		if err := writeSARIF(os.Stdout, findings); err != nil {
+	switch *format {
+	case "sarif":
+		if err := writeSARIF(os.Stdout, report); err != nil {
 			fmt.Fprintf(os.Stderr, "preflight: encode SARIF: %v\n", err)
 			return 2
 		}
-	} else if *format == "json" {
+	case "json":
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(findings); err != nil {
+		if err := encoder.Encode(report); err != nil {
 			fmt.Fprintf(os.Stderr, "preflight: encode output: %v\n", err)
 			return 2
 		}
-	} else if len(findings) == 0 {
-		fmt.Fprintln(os.Stdout, "Preflight: no matching secret patterns found.")
-	} else {
-		for _, finding := range findings {
-			fmt.Printf("%s %s:%d:%d [%s] %s\n",
-				strings.ToUpper(finding.Severity),
-				finding.Path, finding.Line, finding.Column,
-				finding.RuleID, finding.Message)
-		}
-		fmt.Fprintf(os.Stdout, "\n%d potential finding(s). Review results; this scanner may produce false positives or miss secrets.\n", len(findings))
+	default:
+		printTextReport(os.Stdout, report)
 	}
 
-	if len(findings) > 0 {
+	if !report.Complete {
+		return 2
+	}
+	if len(report.Findings) > 0 {
 		return 1
 	}
 	return 0
+}
+
+func printTextReport(w io.Writer, report secret.Report) {
+	for _, finding := range report.Findings {
+		fmt.Fprintf(w, "%s %s:%d:%d [%s] %s\n",
+			strings.ToUpper(finding.Severity), finding.Path, finding.Line, finding.Column,
+			finding.RuleID, finding.Message)
+	}
+	status := "COMPLETE"
+	if !report.Complete {
+		status = "INCOMPLETE"
+	}
+	fmt.Fprintf(w, "\nScan status: %s | scanned files: %d | skipped paths: %d | findings: %d\n",
+		status, report.ScannedFiles, len(report.SkippedPaths), len(report.Findings))
+	for _, issue := range report.SkippedPaths {
+		if issue.Detail == "" {
+			fmt.Fprintf(w, "SKIPPED %s [%s]\n", issue.Path, issue.Reason)
+		} else {
+			fmt.Fprintf(w, "SKIPPED %s [%s]: %s\n", issue.Path, issue.Reason, issue.Detail)
+		}
+	}
+	if !report.Complete {
+		fmt.Fprintln(w, "WARNING: results are partial; do not treat this scan as clean.")
+	} else if len(report.Findings) == 0 {
+		fmt.Fprintln(w, "Preflight: no matching secret patterns found.")
+	} else {
+		fmt.Fprintln(w, "Review potential findings; this scanner may produce false positives or miss secrets.")
+	}
 }
 
 type sarifLog struct {
@@ -111,8 +136,19 @@ type sarifLog struct {
 }
 
 type sarifRun struct {
-	Tool    sarifTool     `json:"tool"`
-	Results []sarifResult `json:"results"`
+	Tool        sarifTool         `json:"tool"`
+	Results     []sarifResult     `json:"results"`
+	Invocations []sarifInvocation `json:"invocations"`
+}
+
+type sarifInvocation struct {
+	ExecutionSuccessful        bool               `json:"executionSuccessful"`
+	ToolExecutionNotifications []sarifNotification `json:"toolExecutionNotifications,omitempty"`
+}
+
+type sarifNotification struct {
+	Level   string       `json:"level"`
+	Message sarifMessage `json:"message"`
 }
 
 type sarifTool struct {
@@ -159,14 +195,13 @@ type sarifRegion struct {
 	StartColumn int `json:"startColumn,omitempty"`
 }
 
-func writeSARIF(w io.Writer, findings []secret.Finding) error {
+func writeSARIF(w io.Writer, report secret.Report) error {
 	rulesByID := make(map[string]sarifRule)
-	results := make([]sarifResult, 0, len(findings))
-	for _, finding := range findings {
+	results := make([]sarifResult, 0, len(report.Findings))
+	for _, finding := range report.Findings {
 		if _, ok := rulesByID[finding.RuleID]; !ok {
 			rulesByID[finding.RuleID] = sarifRule{
-				ID:               finding.RuleID,
-				ShortDescription: sarifMessage{Text: finding.Message},
+				ID: finding.RuleID, ShortDescription: sarifMessage{Text: finding.Message},
 			}
 		}
 		level := "warning"
@@ -176,38 +211,50 @@ func writeSARIF(w io.Writer, findings []secret.Finding) error {
 		case "low", "info", "informational":
 			level = "note"
 		}
-		// SARIF artifact locations are URIs, so escape characters such as spaces.
 		artifactURI := (&url.URL{Path: finding.Path}).EscapedPath()
 		results = append(results, sarifResult{
-			RuleID:  finding.RuleID,
-			Level:   level,
-			Message: sarifMessage{Text: finding.Message},
-			Locations: []sarifLocation{{
-				PhysicalLocation: sarifPhysicalLocation{
-					ArtifactLocation: sarifArtifactLocation{URI: artifactURI},
-					Region:           sarifRegion{StartLine: finding.Line, StartColumn: finding.Column},
-				},
-			}},
+			RuleID: finding.RuleID, Level: level, Message: sarifMessage{Text: finding.Message},
+			Locations: []sarifLocation{{PhysicalLocation: sarifPhysicalLocation{
+				ArtifactLocation: sarifArtifactLocation{URI: artifactURI},
+				Region: sarifRegion{StartLine: finding.Line, StartColumn: finding.Column},
+			}}},
 		})
 	}
 	rules := make([]sarifRule, 0, len(rulesByID))
-	for _, finding := range findings {
+	for _, finding := range report.Findings {
 		if r, ok := rulesByID[finding.RuleID]; ok {
 			rules = append(rules, r)
 			delete(rulesByID, finding.RuleID)
 		}
 	}
+	invocation := sarifInvocation{ExecutionSuccessful: report.Complete}
+	for _, issue := range report.SkippedPaths {
+		level := "note"
+		switch issue.Reason {
+		case "walk_error", "stat_error", "file_too_large", "binary_file", "read_error":
+			level = "warning"
+		}
+		message := fmt.Sprintf("Skipped path %q (%s)", issue.Path, issue.Reason)
+		if issue.Detail != "" {
+			message += ": " + issue.Detail
+		}
+		invocation.ToolExecutionNotifications = append(invocation.ToolExecutionNotifications, sarifNotification{
+			Level: level, Message: sarifMessage{Text: message},
+		})
+	}
+	if !report.Complete && len(invocation.ToolExecutionNotifications) == 0 {
+		invocation.ToolExecutionNotifications = append(invocation.ToolExecutionNotifications, sarifNotification{
+			Level: "warning",
+			Message: sarifMessage{Text: fmt.Sprintf(
+				"Scan incomplete: inspected %d files and skipped %d paths. Review scan diagnostics; an empty result is not a clean bill of health.",
+				report.ScannedFiles, len(report.SkippedPaths))},
+		})
+	}
 	log := sarifLog{
-		Version: "2.1.0",
-		Schema:  "https://json.schemastore.org/sarif-2.1.0.json",
-		Runs: []sarifRun{{
-			Tool: sarifTool{Driver: sarifDriver{
-				Name:           "Preflight",
-				InformationURI: "https://github.com/lonely-worm/preflight",
-				Rules:          rules,
-			}},
-			Results: results,
-		}},
+		Version: "2.1.0", Schema: "https://json.schemastore.org/sarif-2.1.0.json",
+		Runs: []sarifRun{{Tool: sarifTool{Driver: sarifDriver{
+			Name: "Preflight", InformationURI: "https://github.com/lonely-worm/preflight", Rules: rules,
+		}}, Results: results, Invocations: []sarifInvocation{invocation}}},
 	}
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")

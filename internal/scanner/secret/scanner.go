@@ -5,6 +5,7 @@ package secret
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -26,6 +27,21 @@ type Finding struct {
 	Redacted string `json:"redacted_match,omitempty"`
 }
 
+// ScanIssue explains why a path was not fully inspected. Detail never contains file contents.
+type ScanIssue struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
+	Detail string `json:"detail,omitempty"`
+}
+
+// Report describes findings and the scope actually inspected.
+type Report struct {
+	Findings    []Finding   `json:"findings"`
+	ScannedFiles int        `json:"scanned_files"`
+	SkippedPaths []ScanIssue `json:"skipped_paths"`
+	Complete     bool        `json:"complete"`
+}
+
 // Options controls a scan. MaxFileSize <= 0 uses the 2 MiB default.
 type Options struct {
 	MaxFileSize   int64
@@ -41,6 +57,11 @@ type rule struct {
 var rules = []rule{
 	{"aws-access-key-id", "high", "Possible AWS access key ID", regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`)},
 	{"github-token", "critical", "Possible GitHub access token", regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{30,255}\b`)},
+	{"github-fine-grained-token", "critical", "Possible GitHub fine-grained personal access token", regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{20,255}\b`)},
+	{"google-api-key", "high", "Possible Google API key", regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35}\b`)},
+	{"slack-token", "critical", "Possible Slack access token", regexp.MustCompile(`\bxox[baprs]-[0-9A-Za-z-]{10,}\b`)},
+	{"stripe-live-secret-key", "critical", "Possible Stripe live secret key", regexp.MustCompile(`\bsk_live_[0-9A-Za-z]{20,}\b`)},
+	{"npm-access-token", "high", "Possible npm access token", regexp.MustCompile(`\bnpm_[A-Za-z0-9]{36}\b`)},
 	{"private-key-header", "critical", "Private key material header found", regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----`)},
 	{"generic-secret-assignment", "medium", "Possible hard-coded credential assignment", regexp.MustCompile(`(?i)\b(?:api[_-]?key|client[_-]?secret|access[_-]?token|auth[_-]?token|password|passwd|secret[_-]?key)\b\s*[:=]\s*["']?([A-Za-z0-9_./+=-]{12,})`)},
 }
@@ -49,14 +70,24 @@ var ignoredDirs = map[string]struct{}{
 	".git": {}, "node_modules": {}, "vendor": {}, "dist": {}, "build": {}, ".next": {},
 }
 
-// Scan recursively inspects regular text-like files under root. It is read-only.
+// Scan preserves the original findings-only API. Use ScanWithReport when completeness matters.
 func Scan(root string, opts Options) ([]Finding, error) {
-	info, err := os.Stat(root)
+	report, err := ScanWithReport(root, opts)
 	if err != nil {
 		return nil, err
 	}
+	return report.Findings, nil
+}
+
+// ScanWithReport recursively inspects regular text-like files under root. It is read-only.
+// Complete is false when a path that should be inspected cannot be fully read.
+func ScanWithReport(root string, opts Options) (Report, error) {
+	info, err := os.Stat(root)
+	if err != nil {
+		return Report{}, err
+	}
 	if !info.IsDir() {
-		return nil, errors.New("scan root must be a directory")
+		return Report{}, errors.New("scan root must be a directory")
 	}
 	maxSize := opts.MaxFileSize
 	if maxSize <= 0 {
@@ -67,10 +98,24 @@ func Scan(root string, opts Options) ([]Finding, error) {
 		excluded[filepath.Clean(d)] = struct{}{}
 	}
 
-	var findings []Finding
+	report := Report{Findings: []Finding{}, SkippedPaths: []ScanIssue{}, Complete: true}
+	addIssue := func(path, reason, detail string, makesIncomplete bool) {
+		rel, relErr := filepath.Rel(root, path)
+		if relErr == nil {
+			path = filepath.ToSlash(rel)
+		} else {
+			path = filepath.ToSlash(path)
+		}
+		report.SkippedPaths = append(report.SkippedPaths, ScanIssue{Path: path, Reason: reason, Detail: detail})
+		if makesIncomplete {
+			report.Complete = false
+		}
+	}
+
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return walkErr
+			addIssue(path, "walk_error", walkErr.Error(), true)
+			return nil
 		}
 		if path == root {
 			return nil
@@ -78,41 +123,58 @@ func Scan(root string, opts Options) ([]Finding, error) {
 		name := d.Name()
 		if d.IsDir() {
 			if _, ok := ignoredDirs[name]; ok {
+				addIssue(path, "ignored_directory", "directory is excluded by Preflight defaults", false)
 				return filepath.SkipDir
 			}
 			if _, ok := excluded[filepath.Clean(name)]; ok {
+				addIssue(path, "excluded_directory", "directory matched -exclude-dir", false)
 				return filepath.SkipDir
 			}
 			if !opts.IncludeHidden && strings.HasPrefix(name, ".") {
+				addIssue(path, "hidden_directory", "use -include-hidden to scan hidden directories", false)
 				return filepath.SkipDir
 			}
 			return nil
 		}
 		if !d.Type().IsRegular() {
+			addIssue(path, "non_regular_file", "only regular files are scanned", false)
 			return nil
 		}
 		if !opts.IncludeHidden && strings.HasPrefix(name, ".") {
+			addIssue(path, "hidden_file", "use -include-hidden to scan hidden files", false)
 			return nil
 		}
 		fi, err := d.Info()
 		if err != nil {
-			return err
+			addIssue(path, "stat_error", err.Error(), true)
+			return nil
 		}
-		if fi.Size() > maxSize || fi.Size() == 0 {
+		if fi.Size() > maxSize {
+			addIssue(path, "file_too_large", fmt.Sprintf("size %d bytes exceeds limit %d bytes", fi.Size(), maxSize), true)
+			return nil
+		}
+		if fi.Size() == 0 {
+			addIssue(path, "empty_file", "empty file contains no content to inspect", false)
 			return nil
 		}
 		fileFindings, err := scanFile(root, path, maxSize)
 		if err != nil {
+			reason := "read_error"
+			if errors.Is(err, errBinaryFile) {
+				reason = "binary_file"
+			}
+			addIssue(path, reason, err.Error(), true)
 			return nil
-		} // unreadable/binary files are skipped, not fatal to the whole scan
-		findings = append(findings, fileFindings...)
+		}
+		report.ScannedFiles++
+		report.Findings = append(report.Findings, fileFindings...)
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return Report{}, err
 	}
-	sort.Slice(findings, func(i, j int) bool {
-		a, b := findings[i], findings[j]
+	sort.Slice(report.Findings, func(i, j int) bool {
+		a, b := report.Findings[i], report.Findings[j]
 		if a.Path != b.Path {
 			return a.Path < b.Path
 		}
@@ -124,8 +186,16 @@ func Scan(root string, opts Options) ([]Finding, error) {
 		}
 		return a.RuleID < b.RuleID
 	})
-	return findings, nil
+	sort.Slice(report.SkippedPaths, func(i, j int) bool {
+		if report.SkippedPaths[i].Path != report.SkippedPaths[j].Path {
+			return report.SkippedPaths[i].Path < report.SkippedPaths[j].Path
+		}
+		return report.SkippedPaths[i].Reason < report.SkippedPaths[j].Reason
+	})
+	return report, nil
 }
+
+var errBinaryFile = errors.New("binary file")
 
 func scanFile(root, path string, maxFileSize int64) ([]Finding, error) {
 	f, err := os.Open(path)
@@ -150,7 +220,7 @@ func scanFile(root, path string, maxFileSize int64) ([]Finding, error) {
 		lineNo++
 		line := s.Text()
 		if strings.IndexByte(line, 0) >= 0 {
-			return nil, errors.New("binary file")
+			return nil, errBinaryFile
 		}
 		for _, r := range rules {
 			for _, loc := range r.pattern.FindAllStringIndex(line, -1) {
@@ -159,6 +229,9 @@ func scanFile(root, path string, maxFileSize int64) ([]Finding, error) {
 		}
 	}
 	if err := s.Err(); err != nil {
+		return nil, err
+	}
+	if err := f.Close(); err != nil {
 		return nil, err
 	}
 	return out, nil
