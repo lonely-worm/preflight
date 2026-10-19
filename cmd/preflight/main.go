@@ -47,6 +47,9 @@ func run(args []string) int {
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
 		return 2
 	}
 	if *format != "text" && *format != "json" && *format != "sarif" {
