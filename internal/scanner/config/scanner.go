@@ -25,7 +25,7 @@ var rules = []rule{
 	{"docker-host-network", "high", "Container uses host networking", "Prefer an isolated bridge network and publish only required ports.", regexp.MustCompile(`(?i)(docker-compose|compose).*\.ya?ml$`), regexp.MustCompile(`(?i)network_mode\s*:\s*["']?host\b`)},
 	{"terraform-public-ingress", "high", "Terraform ingress rule allows traffic from all IPv4 addresses", "Restrict cidr_blocks to trusted ranges and required ports.", regexp.MustCompile(`\.tf$`), regexp.MustCompile(`(?i)0\.0\.0\.0/0`)},
 	{"github-actions-write-permissions", "high", "GitHub Actions workflow grants write-all permissions", "Use least-privilege permissions at workflow or job level; grant write access only where required.", regexp.MustCompile(`\.github/workflows/.*\.ya?ml$`), regexp.MustCompile(`(?i)^\s*permissions\s*:\s*write-all\s*$`)},
-	{"github-actions-unpinned", "medium", "GitHub Action reference is not pinned to a full commit SHA", "Pin third-party actions to a reviewed full-length commit SHA, or use a verified dependency lockfile.", regexp.MustCompile(`\.github/workflows/.*\.ya?ml$`), regexp.MustCompile(`(?i)^\s*(?:-\s*)?uses\s*:\s*[^#\s]+@(v[0-9]+|main|master|latest)\s*(#.*)?// Package config scans common project configuration files for risky security settings.
+	{"github-actions-unpinned", "medium", "GitHub Action reference is not pinned to a full commit SHA", "Pin third-party actions to a reviewed full-length commit SHA, or use a verified dependency lockfile.", regexp.MustCompile(`\.github/workflows/.*\.ya?ml$`), regexp.MustCompile(`(?i)^\s*(?:-\s*)?uses\s*:\s*[^#\s]+@(v[0-9]+|main|master|latest)\s*(#.*)?$`)},
 package config
 
 import (
