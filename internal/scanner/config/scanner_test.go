@@ -155,3 +155,26 @@ spec:
 		}
 	}
 }
+
+func TestScanWithReportFollowsSymlinkRoot(t *testing.T) {
+	parent := t.TempDir()
+	target := filepath.Join(parent, "project")
+	if err := os.MkdirAll(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "Dockerfile"), []byte("FROM alpine\nUSER root\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(parent, "project-link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks are unavailable on this platform: %v", err)
+	}
+
+	report, err := ScanWithReport(link, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Complete || len(report.Findings) != 1 || report.Findings[0].RuleID != "docker-user-root" {
+		t.Fatalf("expected symlink target config to be scanned, got %#v", report)
+	}
+}
