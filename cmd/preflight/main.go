@@ -41,7 +41,7 @@ func run(args []string) int {
 	flags.Var(&excluded, "exclude-dir", "directory name to exclude (repeatable)")
 	flags.Usage = func() {
 		fmt.Fprintln(flags.Output(), "Usage: preflight [options] [directory]")
-		fmt.Fprintln(flags.Output(), "Scan a local directory for likely hard-coded secrets.")
+		fmt.Fprintln(flags.Output(), "Scan a local directory for likely secrets and risky security configuration.")
 		fmt.Fprintln(flags.Output(), "Options:")
 		flags.PrintDefaults()
 	}
