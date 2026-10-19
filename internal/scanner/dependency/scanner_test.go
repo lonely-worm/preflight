@@ -62,3 +62,25 @@ func TestParseJSONRejectsMalformedOrUnidentifiableFinding(t *testing.T) {
 		}
 	}
 }
+
+func TestParseJSONRejectsUnsupportedProtocolAndUnknownOSV(t *testing.T) {
+	for _, stream := range []string{
+		`{"config":{"protocol_version":"v9.0.0"}}`,
+		`{"config":{"protocol_version":"v1.0.0"}}\n{"finding":{"osv":"GO-2026-9999","trace":[]}}`,
+	} {
+		if _, err := parseJSON(strings.NewReader(stream)); err == nil {
+			t.Errorf("expected protocol or unknown-OSV validation error for %q", stream)
+		}
+	}
+}
+
+func TestParseJSONAcceptsCompleteNoFindingStream(t *testing.T) {
+	stream := `{"config":{"protocol_version":"v1.0.0"}}` + "\n" + `{"progress":{"message":"scan complete"}}`
+	findings, err := parseJSON(strings.NewReader(stream))
+	if err != nil {
+		t.Fatalf("expected valid no-finding stream, got %v", err)
+	}
+	if findings == nil || len(findings) != 0 {
+		t.Fatalf("expected an empty findings slice, got %#v", findings)
+	}
+}
