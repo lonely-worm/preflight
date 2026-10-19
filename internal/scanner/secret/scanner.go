@@ -135,7 +135,7 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 				return filepath.SkipDir
 			}
 			if !opts.IncludeHidden && strings.HasPrefix(name, ".") {
-				addIssue(path, "hidden_directory", "use -include-hidden to scan hidden directories", false)
+				addIssue(path, "hidden_directory", "hidden paths are excluded from the secret-content scan; use -include-hidden to include them", false)
 				return filepath.SkipDir
 			}
 			return nil
