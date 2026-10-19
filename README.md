@@ -100,6 +100,8 @@ go run ./cmd/preflight -deps .
 | Rule ID | What it looks for | Default severity |
 | --- | --- | --- |
 | `aws-access-key-id` | AWS access key ID-shaped strings | High |
+| `aws-secret-access-key` | AWS secret access key assignments | Critical |
+| `aws-session-token` | AWS session token assignments | Critical |
 | `github-token` | GitHub classic token-shaped strings | Critical |
 | `github-fine-grained-token` | GitHub fine-grained personal access token-shaped strings | Critical |
 | `google-api-key` | Google API key-shaped strings | High |
