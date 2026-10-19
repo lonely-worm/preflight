@@ -98,7 +98,7 @@ These are pattern-based heuristics. A match is a **potential finding**, not proo
 
 ## Roadmap
 
-1. Add baseline support and configurable severity policy.
+1. Expand regression coverage for detection edge cases and false positives.
 2. Add baseline support and configurable severity policy.
 3. Add structured scan-scope diagnostics for unreadable or skipped files.
 4. Add benchmarks and publish versioned cross-platform releases.
