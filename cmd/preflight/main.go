@@ -9,7 +9,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lonely-worm/preflight/internal/scanner/secret"\n\tconfigscanner "github.com/lonely-worm/preflight/internal/scanner/config"\n\tdepscanner "github.com/lonely-worm/preflight/internal/scanner/dependency"
+	"github.com/lonely-worm/preflight/internal/scanner/secret"
+	configscanner "github.com/lonely-worm/preflight/internal/scanner/config"
+	depscanner "github.com/lonely-worm/preflight/internal/scanner/dependency"
 )
 
 type stringList []string
@@ -30,7 +32,9 @@ func run(args []string) int {
 	format := flags.String("format", "text", "output format: text, json, or sarif")
 	configPath := flags.String("config", "", "JSON rule configuration file")
 	baselinePath := flags.String("baseline", "", "JSON baseline file for known findings")
-	writeBaseline := flags.String("write-baseline", "", "write current findings to a baseline file and exit")\n\tcheckDependencies := flags.Bool("deps", false, "run govulncheck for Go dependency vulnerabilities (requires govulncheck installed)")\n\tcheckConfig := flags.Bool("config-scan", true, "scan common configuration files for risky security settings")
+	writeBaseline := flags.String("write-baseline", "", "write current findings to a baseline file and exit")
+	checkDependencies := flags.Bool("deps", false, "run govulncheck for Go dependency vulnerabilities (requires govulncheck installed)")
+	checkConfig := flags.Bool("config-scan", true, "scan common configuration files for risky security settings")
 	includeHidden := flags.Bool("include-hidden", false, "include hidden files and directories")
 	maxFileSize := flags.Int64("max-file-size", 2<<20, "maximum file size to scan in bytes")
 	var excluded stringList
