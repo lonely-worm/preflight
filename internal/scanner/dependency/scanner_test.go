@@ -35,7 +35,7 @@ func TestParseJSONHandlesOutOfOrderEventsAndMapsSourceLocation(t *testing.T) {
 }
 
 func TestParseJSONReportsModuleLevelFindingWithoutSourceLocation(t *testing.T) {
-	stream := "{\"config\":{\"protocol_version\":\"v1.0.0\"}}\n" + `{"finding":{"osv":"GO-2026-4321","fixed_version":"v2.0.1","trace":[{"module":"example.com/dependency","version":"v2.0.0"}]}}`
+	stream := `{"config":{"protocol_version":"v1.0.0"}}` + "\n" + `{"finding":{"osv":"GO-2026-4321","fixed_version":"v2.0.1","trace":[{"module":"example.com/dependency","version":"v2.0.0"}]}}` + "\n" + `{"osv":{"id":"GO-2026-4321","summary":"A vulnerable dependency"}}`
 	findings, err := parseJSON(strings.NewReader(stream))
 	if err != nil {
 		t.Fatal(err)
