@@ -110,75 +110,64 @@ func parseJSON(reader io.Reader) ([]secret.Finding, error) {
 			return nil, fmt.Errorf("govulncheck finding is missing its OSV ID")
 		}
 		info := vulnerabilities[finding.OSV]
-		traces := finding.Trace
-		if len(traces) == 0 {
-			traces = []traceFrame{{}}
+
+		var vulnerableSymbolFrame traceFrame
+		var entryPoint traceFrame
+		if len(finding.Trace) > 0 {
+			vulnerableSymbolFrame = finding.Trace[0]
+			entryPoint = finding.Trace[len(finding.Trace)-1]
 		}
-
-		for _, trace := range traces {
-			vulnerableSymbol := trace.Package
-			if trace.Function != "" {
-				if vulnerableSymbol != "" {
-					vulnerableSymbol += "."
-				}
-				vulnerableSymbol += trace.Function
-			}
-			if trace.Receiver != "" {
-				vulnerableSymbol = trace.Package + "." + trace.Receiver + "." + trace.Function
-			}
-			key := strings.Join([]string{
-				finding.OSV, trace.Module, trace.Version, vulnerableSymbol,
-				positionFilename(trace.Position), positionLine(trace.Position), positionColumn(trace.Position),
-			}, "|")
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-
-			message := finding.OSV
-			if trace.Module != "" {
-				message += fmt.Sprintf(" affects %s %s", trace.Module, trace.Version)
-			}
-			if info.Summary != "" {
-				message += ": " + info.Summary
-			}
-			if finding.FixedVersion != "" {
-				message += ". Remediation: upgrade to " + finding.FixedVersion + " or a later patched version, then rerun govulncheck."
-			} else {
-				message += ". Remediation: review the advisory and update to a supported patched release; govulncheck did not report a fixed version."
-			}
+		vulnerableSymbol := vulnerableSymbolFrame.Package
+		if vulnerableSymbolFrame.Function != "" {
 			if vulnerableSymbol != "" {
-				message += ". Vulnerable symbol: " + vulnerableSymbol
+				vulnerableSymbol += "."
 			}
+			vulnerableSymbol += vulnerableSymbolFrame.Function
+		}
+		if vulnerableSymbolFrame.Receiver != "" {
+			vulnerableSymbol = vulnerableSymbolFrame.Package + "." + vulnerableSymbolFrame.Receiver + "." + vulnerableSymbolFrame.Function
+		}
 
-			path, line, column := "go.mod", 1, 1
-			// govulncheck traces run from the vulnerable symbol toward the entry point. The
-			// final frame is the most useful source location for the developer to inspect.
-			if len(finding.Trace) > 0 {
-				entryPoint := finding.Trace[len(finding.Trace)-1]
-				if entryPoint.Position != nil && entryPoint.Position.Filename != "" && entryPoint.Position.Line > 0 {
-					path = filepath.ToSlash(filepath.Clean(entryPoint.Position.Filename))
-					line = entryPoint.Position.Line
-					if entryPoint.Position.Column > 0 {
-						column = entryPoint.Position.Column
-					}
-				}
+		key := strings.Join([]string{
+			finding.OSV, vulnerableSymbolFrame.Module, vulnerableSymbolFrame.Version, vulnerableSymbol,
+			positionFilename(entryPoint.Position), positionLine(entryPoint.Position), positionColumn(entryPoint.Position),
+		}, "|")
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
+		message := finding.OSV
+		if vulnerableSymbolFrame.Module != "" {
+			message += fmt.Sprintf(" affects %s %s", vulnerableSymbolFrame.Module, vulnerableSymbolFrame.Version)
+		}
+		if info.Summary != "" {
+			message += ": " + info.Summary
+		}
+		if finding.FixedVersion != "" {
+			message += ". Remediation: upgrade to " + finding.FixedVersion + " or a later patched version, then rerun govulncheck."
+		} else {
+			message += ". Remediation: review the advisory and update to a supported patched release; govulncheck did not report a fixed version."
+		}
+		if vulnerableSymbol != "" {
+			message += ". Vulnerable symbol: " + vulnerableSymbol
+		}
+
+		path, line, column := "go.mod", 1, 1
+		// govulncheck traces run from the vulnerable symbol toward the entry point. The
+		// final frame is the most useful source location for the developer to inspect.
+		if entryPoint.Position != nil && entryPoint.Position.Filename != "" && entryPoint.Position.Line > 0 {
+			path = filepath.ToSlash(filepath.Clean(entryPoint.Position.Filename))
+			line = entryPoint.Position.Line
+			if entryPoint.Position.Column > 0 {
+				column = entryPoint.Position.Column
 			}
-			findings = append(findings, secret.Finding{
-				RuleID: "go-vulnerability", Severity: "high", Path: path,
-				Line: line, Column: column, Message: message,
-			})
 		}
+		findings = append(findings, secret.Finding{
+			RuleID: "go-vulnerability", Severity: "high", Path: path,
+			Line: line, Column: column, Message: message,
+		})
 	}
-	sort.Slice(findings, func(i, j int) bool {
-		if findings[i].Path != findings[j].Path {
-			return findings[i].Path < findings[j].Path
-		}
-		if findings[i].Line != findings[j].Line {
-			return findings[i].Line < findings[j].Line
-		}
-		return findings[i].Message < findings[j].Message
-	})
 	return findings, nil
 }
 
