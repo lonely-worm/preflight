@@ -41,7 +41,7 @@ func run(args []string) int {
 	flags.Var(&excluded, "exclude-dir", "directory name to exclude (repeatable)")
 	flags.Usage = func() {
 		fmt.Fprintln(flags.Output(), "Usage: preflight [options] [directory]")
-		fmt.Fprintln(flags.Output(), "Scan a local directory for likely hard-coded secrets.")
+		fmt.Fprintln(flags.Output(), "Scan a local directory for likely secrets and risky security configuration.")
 		fmt.Fprintln(flags.Output(), "Options:")
 		flags.PrintDefaults()
 	}
@@ -209,8 +209,20 @@ type sarifDriver struct {
 }
 
 type sarifRule struct {
-	ID               string       `json:"id"`
-	ShortDescription sarifMessage `json:"shortDescription"`
+	ID                    string                    `json:"id"`
+	ShortDescription      sarifMessage              `json:"shortDescription"`
+	FullDescription       *sarifMessage             `json:"fullDescription,omitempty"`
+	HelpURI               string                    `json:"helpUri,omitempty"`
+	DefaultConfiguration  sarifDefaultConfiguration `json:"defaultConfiguration"`
+	Properties            sarifRuleProperties       `json:"properties,omitempty"`
+}
+
+type sarifDefaultConfiguration struct {
+	Level string `json:"level"`
+}
+
+type sarifRuleProperties struct {
+	Tags []string `json:"tags,omitempty"`
 }
 
 type sarifMessage struct {
@@ -242,22 +254,42 @@ type sarifRegion struct {
 	StartColumn int `json:"startColumn,omitempty"`
 }
 
+func sarifLevel(severity string) string {
+	switch strings.ToLower(severity) {
+	case "critical", "high":
+		return "error"
+	case "low", "info", "informational":
+		return "note"
+	default:
+		return "warning"
+	}
+}
+
+func sarifRuleForFinding(finding secret.Finding) sarifRule {
+	shortDescription := finding.Message
+	var fullDescription *sarifMessage
+	if short, remediation, ok := strings.Cut(finding.Message, " Remediation: "); ok {
+		shortDescription = short
+		fullDescription = &sarifMessage{Text: "Recommended action: " + remediation}
+	}
+	return sarifRule{
+		ID: finding.RuleID,
+		ShortDescription: sarifMessage{Text: shortDescription},
+		FullDescription: fullDescription,
+		HelpURI: "https://github.com/lonely-worm/preflight#detection-coverage",
+		DefaultConfiguration: sarifDefaultConfiguration{Level: sarifLevel(finding.Severity)},
+		Properties: sarifRuleProperties{Tags: []string{"security", "preflight"}},
+	}
+}
+
 func writeSARIF(w io.Writer, report secret.Report) error {
 	rulesByID := make(map[string]sarifRule)
 	results := make([]sarifResult, 0, len(report.Findings))
 	for _, finding := range report.Findings {
 		if _, ok := rulesByID[finding.RuleID]; !ok {
-			rulesByID[finding.RuleID] = sarifRule{
-				ID: finding.RuleID, ShortDescription: sarifMessage{Text: finding.Message},
-			}
+			rulesByID[finding.RuleID] = sarifRuleForFinding(finding)
 		}
-		level := "warning"
-		switch strings.ToLower(finding.Severity) {
-		case "critical", "high":
-			level = "error"
-		case "low", "info", "informational":
-			level = "note"
-		}
+		level := sarifLevel(finding.Severity)
 		artifactURI := (&url.URL{Path: finding.Path}).EscapedPath()
 		results = append(results, sarifResult{
 			RuleID: finding.RuleID, Level: level, Message: sarifMessage{Text: finding.Message},

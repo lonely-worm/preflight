@@ -1,11 +1,12 @@
 # Preflight
 
-**A developer-focused, read-only secret scanner written in Go.**
+**A developer-focused, read-only security scanner written in Go.**
 
 Preflight scans a local project directory for common hard-coded credential patterns and reports findings without printing the matched secret value. It is designed as a lightweight first line of defense—not a replacement for secret-management controls or a full security audit.
 
 [![Go CI](https://github.com/lonely-worm/preflight/actions/workflows/ci.yml/badge.svg)](https://github.com/lonely-worm/preflight/actions/workflows/ci.yml)
 [![Code Scanning](https://github.com/lonely-worm/preflight/actions/workflows/code-scanning.yml/badge.svg)](https://github.com/lonely-worm/preflight/actions/workflows/code-scanning.yml)
+[![Latest Release](https://img.shields.io/github/v/release/lonely-worm/preflight)](https://github.com/lonely-worm/preflight/releases/latest)
 [![Go 1.22+](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 
 ## Features
@@ -16,11 +17,11 @@ Preflight scans a local project directory for common hard-coded credential patte
 - Text, JSON, and SARIF 2.1.0 output.
 - Stable finding order for predictable output.
 - Scan report includes inspected-file counts, skipped paths with reasons, and an explicit completeness status.
-- Scan report includes inspected-file counts, skipped paths with reasons, and an explicit completeness status.
 - JSON rule configuration with per-rule enable/disable and severity overrides.
 - Baseline support for suppressing known findings without storing credential values.
 - Hidden-file control, directory exclusions, and configurable maximum file size.
-- GitHub Actions workflows for tests/build checks and SARIF upload to GitHub Code Scanning.
+- GitHub Actions workflows with least-privilege permissions, full-SHA action pins, SARIF artifacts, and tagged cross-platform releases.
+- Weekly Dependabot checks for GitHub Actions and Go module updates.
 
 ## Quick start
 
@@ -32,6 +33,23 @@ Clone and enter the repository:
 git clone https://github.com/lonely-worm/preflight.git
 cd preflight
 ```
+
+## Prebuilt binaries
+
+Download a release from [GitHub Releases](https://github.com/lonely-worm/preflight/releases). Each version includes standalone binaries for Linux, macOS, and Windows on both AMD64 (x86-64) and ARM64:
+
+| Platform | Asset suffix |
+| --- | --- |
+| Linux x86-64 | `linux_amd64` |
+| Linux ARM64 | `linux_arm64` |
+| macOS Intel | `darwin_amd64` |
+| macOS Apple Silicon | `darwin_arm64` |
+| Windows x86-64 | `windows_amd64.exe` |
+| Windows ARM64 | `windows_arm64.exe` |
+
+Choose the asset matching your operating system and CPU architecture. On Linux or macOS, make it executable with `chmod +x ./preflight_...`, then run it with a target directory, for example `./preflight_... .`. Windows users can launch the downloaded `.exe` from PowerShell, for example `./preflight_v1.2.3_windows_amd64.exe .` (replace the version and filename with the downloaded asset). Releases include a `SHA256SUMS` file; verify the downloaded binary against the matching entry before running it.
+
+Releases are generated from semantic-version tags such as `v1.2.3`. The workflow runs tests, cross-compiles all six targets, and attaches the binaries plus SHA-256 checksums to the GitHub Release.
 
 Run tests and static checks:
 
@@ -69,6 +87,12 @@ go run ./cmd/preflight -exclude-dir testdata -exclude-dir fixtures .
 
 # Change the maximum scanned file size (bytes)
 go run ./cmd/preflight -max-file-size 1048576 .
+
+# Disable the default security configuration checks
+go run ./cmd/preflight -config-scan=false .
+
+# Also scan Go dependency vulnerabilities (requires govulncheck on PATH)
+go run ./cmd/preflight -deps .
 ```
 
 ## Detection coverage
@@ -147,7 +171,9 @@ The baseline stores a fingerprint plus rule ID, relative path, line, and column�
 
 CI regression tests also verify that incomplete JSON and SARIF runs fail closed.
 
-Every output format reports scan completeness. Text output lists skipped paths and reasons; JSON returns an object containing `findings`, `scanned_files`, `skipped_paths`, and `complete`. SARIF marks incomplete execution as unsuccessful and includes a warning notification.
+Every output format reports scan completeness. Text output lists skipped paths and reasons; JSON returns an object containing `findings`, `scanned_files`, `skipped_paths`, and `complete`. SARIF 2.1.0 separates concise rule summaries from remediation guidance, maps severity to SARIF levels, and marks incomplete execution as unsuccessful with warning notifications.
+
+The Code Scanning workflow validates the SARIF JSON, uploads the report to GitHub Code Scanning for eligible runs, and preserves `preflight.sarif` as a workflow artifact for 14 days. Uploads from fork pull requests are skipped because those runs do not have permission to publish code-scanning results.
 
 - `0` — scan completed without findings; paths intentionally excluded by policy may still be listed.
 - `1` — scan completed and one or more potential findings were detected.
@@ -166,9 +192,9 @@ Preflight reports intentional scope exclusions such as hidden paths, default-ign
 
 ## Roadmap
 
-1. Expand regression coverage for detection edge cases and false positives.
-2. Add dependency and configuration-file scanners.
-3. Add benchmarks and publish versioned cross-platform releases.
+1. Expand language-specific secret coverage and reduce false positives.
+2. Add scanner benchmarks and performance regression checks.
+3. Publish release provenance and signed checksums.
 
 
 ## License

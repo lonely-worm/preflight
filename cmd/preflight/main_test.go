@@ -90,6 +90,9 @@ func TestRunWritesSARIFWithoutLeakingSecret(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "sample.env"), []byte("GITHUB_TOKEN="+secretValue+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(root, "Dockerfile"), []byte("FROM alpine:latest\nUSER root\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	code, output := captureStdout(t, func() int { return run([]string{"-format", "sarif", root}) })
 	if code != 1 {
 		t.Fatalf("expected exit 1 when findings exist, got %d; output: %s", code, output)
@@ -102,6 +105,48 @@ func TestRunWritesSARIFWithoutLeakingSecret(t *testing.T) {
 	}
 	if strings.Contains(output, secretValue) {
 		t.Fatal("SARIF output leaked the matched secret")
+	}
+
+	var document struct {
+		Runs []struct {
+			Tool struct {
+				Driver struct {
+					Rules []struct {
+						ID string `json:"id"`
+						ShortDescription struct { Text string `json:"text"` } `json:"shortDescription"`
+						FullDescription struct { Text string `json:"text"` } `json:"fullDescription"`
+						DefaultConfiguration struct { Level string `json:"level"` } `json:"defaultConfiguration"`
+						Properties struct { Tags []string `json:"tags"` } `json:"properties"`
+					} `json:"rules"`
+				} `json:"driver"`
+			} `json:"tool"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal([]byte(output), &document); err != nil {
+		t.Fatalf("expected parseable SARIF metadata: %v", err)
+	}
+	if len(document.Runs) != 1 {
+		t.Fatalf("expected one SARIF run, got %d", len(document.Runs))
+	}
+	var foundConfigRule bool
+	for _, rule := range document.Runs[0].Tool.Driver.Rules {
+		if rule.ID != "docker-user-root" { continue }
+		foundConfigRule = true
+		if strings.Contains(rule.ShortDescription.Text, "Remediation:") {
+			t.Fatalf("short description should not contain remediation text: %q", rule.ShortDescription.Text)
+		}
+		if !strings.Contains(rule.FullDescription.Text, "non-root user") {
+			t.Fatalf("expected actionable full description, got %q", rule.FullDescription.Text)
+		}
+		if rule.DefaultConfiguration.Level != "error" {
+			t.Fatalf("expected high severity to map to SARIF error, got %q", rule.DefaultConfiguration.Level)
+		}
+		if !containsString(rule.Properties.Tags, "security") {
+			t.Fatalf("expected security tag in SARIF metadata, got %#v", rule.Properties.Tags)
+		}
+	}
+	if !foundConfigRule {
+		t.Fatal("expected docker-user-root rule metadata in SARIF output")
 	}
 }
 
@@ -218,4 +263,11 @@ func TestRunMarksIncompleteSARIFExecution(t *testing.T) {
 	if !ok || len(notifications) == 0 {
 		t.Fatal("expected warning notification for incomplete scan")
 	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target { return true }
+	}
+	return false
 }

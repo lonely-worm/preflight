@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -13,26 +18,36 @@ jobs:
   test:
     name: Test, vet, build, and smoke test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.22.x'
           cache: true
+          cache-dependency-path: go.mod
+
       - name: Run unit tests
         run: go test -race -v ./...
+
       - name: Run go vet
         run: go vet ./...
+
       - name: Build CLI
-        run: go build -o ./preflight ./cmd/preflight
+        run: go build -trimpath -o ./preflight ./cmd/preflight
+
       - name: Smoke test clean directory
         shell: bash
         run: |
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
           ./preflight "$tmp"
+
       - name: Smoke test detection and redaction
         shell: bash
         run: |
@@ -49,3 +64,53 @@ jobs:
             echo "Smoke test failed: secret value leaked into output"
             exit 1
           fi
+
+  cross-build:
+    name: Cross-build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: ""
+          - goos: linux
+            goarch: arm64
+            suffix: ""
+          - goos: darwin
+            goarch: amd64
+            suffix: ""
+          - goos: darwin
+            goarch: arm64
+            suffix: ""
+          - goos: windows
+            goarch: amd64
+            suffix: ".exe"
+          - goos: windows
+            goarch: arm64
+            suffix: ".exe"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.22.x'
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: Compile target binary
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          output="preflight${{ matrix.suffix }}"
+          CGO_ENABLED=0 go build -trimpath -o "$output" ./cmd/preflight
+          test -s "$output"
