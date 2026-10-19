@@ -3,16 +3,16 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"sort"
 	"fmt"
 	"io"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 
-	"github.com/lonely-worm/preflight/internal/scanner/secret"
 	configscanner "github.com/lonely-worm/preflight/internal/scanner/config"
 	depscanner "github.com/lonely-worm/preflight/internal/scanner/dependency"
+	"github.com/lonely-worm/preflight/internal/scanner/secret"
 )
 
 type stringList []string
@@ -148,6 +148,12 @@ func run(args []string) int {
 		if a.Column != b.Column { return a.Column < b.Column }
 		return a.RuleID < b.RuleID
 	})
+	sort.Slice(report.SkippedPaths, func(i, j int) bool {
+		if report.SkippedPaths[i].Path != report.SkippedPaths[j].Path {
+			return report.SkippedPaths[i].Path < report.SkippedPaths[j].Path
+		}
+		return report.SkippedPaths[i].Reason < report.SkippedPaths[j].Reason
+	})
 
 	switch *format {
 	case "sarif":
@@ -185,8 +191,8 @@ func printTextReport(w io.Writer, report secret.Report) {
 	if !report.Complete {
 		status = "INCOMPLETE"
 	}
-	fmt.Fprintf(w, "\nScan status: %s | scanned files: %d | configuration files: %d | skipped paths: %d | findings: %d\n",
-		status, report.ScannedFiles, report.ConfigurationFilesScanned, len(report.SkippedPaths), len(report.Findings))
+	fmt.Fprintf(w, "\nScan status: %s | scanned files: %d | configuration files: %d | skipped paths: %d | suppressed: %d | findings: %d\n",
+		status, report.ScannedFiles, report.ConfigurationFilesScanned, len(report.SkippedPaths), report.SuppressedFindings, len(report.Findings))
 	for _, issue := range report.SkippedPaths {
 		if issue.Detail == "" {
 			fmt.Fprintf(w, "SKIPPED %s [%s]\n", issue.Path, issue.Reason)
@@ -196,8 +202,10 @@ func printTextReport(w io.Writer, report secret.Report) {
 	}
 	if !report.Complete {
 		fmt.Fprintln(w, "WARNING: results are partial; do not treat this scan as clean.")
+	} else if len(report.Findings) == 0 && report.SuppressedFindings > 0 {
+		fmt.Fprintf(w, "Preflight: no unsuppressed findings; %d potential finding(s) matched the baseline.\n", report.SuppressedFindings)
 	} else if len(report.Findings) == 0 {
-		fmt.Fprintln(w, "Preflight: no matching secret patterns found.")
+		fmt.Fprintln(w, "Preflight: no matching secret or configuration patterns found.")
 	} else {
 		fmt.Fprintln(w, "Review potential findings; this scanner may produce false positives or miss secrets.")
 	}
