@@ -50,6 +50,8 @@ Choose an output format:
 # JSON
 go run ./cmd/preflight -format json .
 
+# JSON now includes findings, scan counts, skipped-path diagnostics, and completeness status.
+
 # SARIF 2.1.0
 go run ./cmd/preflight -format sarif . > preflight.sarif
 ```
