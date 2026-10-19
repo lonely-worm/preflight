@@ -86,3 +86,20 @@ func mustRead(t *testing.T, path string) []byte {
 	}
 	return data
 }
+
+func TestLoadConfigRejectsUnknownFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"rules":{"github-token":{"enabeld":false}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadConfig(path); err == nil {
+		t.Fatal("expected a misspelled rule option to be rejected")
+	}
+
+	if err := os.WriteFile(path, []byte(`{"rules":{},"overrides":{}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadConfig(path); err == nil {
+		t.Fatal("expected an unknown top-level field to be rejected")
+	}
+}
