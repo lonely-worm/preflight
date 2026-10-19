@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/lonely-worm/preflight/internal/scanner/secret"
@@ -216,8 +215,7 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 }
 
 func isCommentLine(line string) bool {
-	return strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") ||
-		strings.HasPrefix(line, "/*") || strings.HasPrefix(line, "*")
+	return strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") || strings.HasPrefix(line, "/*")
 }
 
 func matchesRule(r rule, line string) bool {
@@ -247,5 +245,3 @@ func matchesRule(r rule, line string) bool {
 	return !fullCommitSHA.MatchString(ref) && !sha256Digest.MatchString(ref)
 }
 
-// Keep strconv in this file only to preserve a readable numeric-size detail on all Go versions.
-var _ = strconv.IntSize
