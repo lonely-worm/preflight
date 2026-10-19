@@ -157,7 +157,6 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 			addIssue(path, "config_read_error", err.Error(), true)
 			return nil
 		}
-		defer file.Close()
 
 		initialBufferSize := 4096
 		if maxFileSize < int64(initialBufferSize) {
@@ -186,8 +185,14 @@ func ScanWithReport(root string, opts Options) (Report, error) {
 				hasKind = true
 			}
 		}
-		if err := scanner.Err(); err != nil {
-			addIssue(path, "config_read_error", err.Error(), true)
+		scanErr := scanner.Err()
+		closeErr := file.Close()
+		if scanErr != nil {
+			addIssue(path, "config_read_error", scanErr.Error(), true)
+			return nil
+		}
+		if closeErr != nil {
+			addIssue(path, "config_read_error", closeErr.Error(), true)
 			return nil
 		}
 
