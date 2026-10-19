@@ -41,6 +41,11 @@ type rule struct {
 var rules = []rule{
 	{"aws-access-key-id", "high", "Possible AWS access key ID", regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`)},
 	{"github-token", "critical", "Possible GitHub access token", regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{30,255}\b`)},
+	{"github-fine-grained-token", "critical", "Possible GitHub fine-grained personal access token", regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{20,255}\b`)},
+	{"google-api-key", "high", "Possible Google API key", regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35}\b`)},
+	{"slack-token", "critical", "Possible Slack access token", regexp.MustCompile(`\bxox[baprs]-[0-9A-Za-z-]{10,}\b`)},
+	{"stripe-live-secret-key", "critical", "Possible Stripe live secret key", regexp.MustCompile(`\bsk_live_[0-9A-Za-z]{20,}\b`)},
+	{"npm-access-token", "high", "Possible npm access token", regexp.MustCompile(`\bnpm_[A-Za-z0-9]{36}\b`)},
 	{"private-key-header", "critical", "Private key material header found", regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----`)},
 	{"generic-secret-assignment", "medium", "Possible hard-coded credential assignment", regexp.MustCompile(`(?i)\b(?:api[_-]?key|client[_-]?secret|access[_-]?token|auth[_-]?token|password|passwd|secret[_-]?key)\b\s*[:=]\s*["']?([A-Za-z0-9_./+=-]{12,})`)},
 }
