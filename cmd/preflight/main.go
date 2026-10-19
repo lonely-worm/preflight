@@ -28,6 +28,9 @@ func run(args []string) int {
 	flags := flag.NewFlagSet("preflight", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	format := flags.String("format", "text", "output format: text, json, or sarif")
+	configPath := flags.String("config", "", "JSON rule configuration file")
+	baselinePath := flags.String("baseline", "", "JSON baseline file for known findings")
+	writeBaseline := flags.String("write-baseline", "", "write current findings to a baseline file and exit")
 	includeHidden := flags.Bool("include-hidden", false, "include hidden files and directories")
 	maxFileSize := flags.Int64("max-file-size", 2<<20, "maximum file size to scan in bytes")
 	var excluded stringList
@@ -59,14 +62,34 @@ func run(args []string) int {
 		root = flags.Arg(0)
 	}
 
+	config, err := secret.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "preflight: config: %v\\n", err)
+		return 2
+	}
+	baseline, err := secret.LoadBaseline(*baselinePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "preflight: baseline: %v\\n", err)
+		return 2
+	}
 	report, err := secret.ScanWithReport(root, secret.Options{
 		MaxFileSize:   *maxFileSize,
 		IncludeHidden: *includeHidden,
 		ExcludeDirs:   excluded,
+		RuleConfig: config,
+		Baseline: baseline,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "preflight: scan failed: %v\n", err)
 		return 2
+	}
+	if *writeBaseline != "" {
+		if err := secret.WriteBaseline(*writeBaseline, report.Findings); err != nil {
+			fmt.Fprintf(os.Stderr, "preflight: write baseline: %v\\n", err)
+			return 2
+		}
+		fmt.Fprintf(os.Stdout, "Wrote %d baseline entries to %s\\n", len(report.Findings), *writeBaseline)
+		return 0
 	}
 	if report.Findings == nil {
 		report.Findings = []secret.Finding{}
